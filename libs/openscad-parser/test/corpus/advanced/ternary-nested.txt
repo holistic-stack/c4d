@@ -1,0 +1,14 @@
+==================
+Nested ternary expression
+==================
+
+x = cond1 ? (cond2 ? 1 : 2) : 3;
+
+---
+
+(source_file
+  (var_declaration (assignment name: (identifier)
+    value: (ternary_expression
+      condition: (identifier)
+      consequence: (parenthesized_expression (ternary_expression condition: (identifier) consequence: (number) alternative: (number)))
+      alternative: (number)))))

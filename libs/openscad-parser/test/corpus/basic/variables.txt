@@ -1,0 +1,34 @@
+==================
+Variable declaration and assignment
+==================
+
+a = 1;
+$fn = 50;
+name = "OpenSCAD";
+r = [0:1:10];
+
+---
+
+(source_file
+  (var_declaration (assignment name: (identifier) value: (number)))
+  (var_declaration (assignment name: (special_variable (identifier)) value: (number)))
+  (var_declaration (assignment name: (identifier) value: (string)))
+  (var_declaration (assignment name: (identifier)
+    value: (range start: (number) increment: (number) end: (number)))))
+
+==================
+Let expression and let block
+==================
+
+let (a = 1, b = 2) a + b;
+let (c = 3) cube(c);
+
+---
+
+(source_file
+  (let_expression
+    (assignments (assignment name: (identifier) value: (number)) (assignment name: (identifier) value: (number)))
+    (expression))
+  (let_block
+    (assignments (assignment name: (identifier) value: (number)))
+    (statement (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement)))))

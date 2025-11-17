@@ -1,0 +1,24 @@
+==================
+Resize with auto parameter and mirror variants
+==================
+
+resize([5,10,15], auto=true) cube(1);
+mirror([0,1,0]) cube(1);
+mirror([0,0,1]) sphere(2);
+
+---
+
+(source_file
+  (transform_chain (module_call name: (identifier) arguments: (arguments (list (integer) (integer) (integer)) (assignment name: (identifier) value: (boolean)))) (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement)))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (list (integer) (integer) (integer)))) (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement)))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (list (integer) (integer) (integer)))) (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))))
+
+==================
+Invalid import and surface
+==================
+:error
+
+import("badfile", convexity=ten);
+surface(file=heightmap.png);
+
+---

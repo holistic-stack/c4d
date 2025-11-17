@@ -1,0 +1,22 @@
+==================
+Minkowski and hull operations with primitives
+==================
+
+minkowski() { cube(1); sphere(1); }
+hull() { cube(1); translate([1,0,0]) sphere(1); }
+
+---
+
+(source_file
+  (transform_chain
+    (module_call name: (identifier) arguments: (arguments))
+    (union_block
+      (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))
+      (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))))
+  (transform_chain
+    (module_call name: (identifier) arguments: (arguments))
+    (union_block
+      (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))
+      (transform_chain
+        (module_call name: (identifier) arguments: (arguments (list (integer) (integer) (integer))))
+        (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))))))

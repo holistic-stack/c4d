@@ -1,0 +1,22 @@
+==================
+Assert in assignment
+==================
+
+res = assert(true);
+
+---
+
+(source_file
+  (var_declaration (assignment name: (identifier)
+    value: (assert_expression arguments: (arguments (boolean))))))
+
+==================
+Echo without trailing expression and empty args
+==================
+
+res2 = echo("value");
+
+---
+
+(source_file
+  (var_declaration (assignment name: (identifier) value: (echo_expression arguments: (arguments (string))))))

@@ -1,0 +1,39 @@
+==================
+For block — assignments range
+==================
+
+for (i = [0:1:2]) cube(i);
+
+---
+
+(source_file
+  (for_block
+    (assignments (assignment name: (identifier) value: (range start: (number) increment: (number) end: (number))))
+    body: (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement))))
+
+==================
+Intersection_for block — simple list
+==================
+
+intersection_for (i = [1,3]) sphere(i);
+
+---
+
+(source_file
+  (intersection_for_block
+    (assignments (assignment name: (identifier) value: (list (number) (number))))
+    body: (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement))))
+
+==================
+If/else — object statements
+==================
+
+if (true) cube(1); else sphere(2);
+
+---
+
+(source_file
+  (if_block
+    condition: (parenthesized_expression (boolean))
+    consequence: (transform_chain (module_call name: (identifier) arguments: (arguments (number))) (statement))
+    alternative: (statement (transform_chain (module_call name: (identifier) arguments: (arguments (number))) (statement)))))

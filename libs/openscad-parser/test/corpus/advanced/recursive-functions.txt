@@ -1,0 +1,37 @@
+==================
+Recursive function — factorial
+==================
+
+function fact(n) = n <= 1 ? 1 : n * fact(n-1);
+
+---
+
+(source_file
+  (function_item
+    name: (identifier)
+    parameters: (parameters (parameter (identifier)))
+    (expression (ternary_expression
+      condition: (binary_expression left: (identifier) right: (number))
+      consequence: (number)
+      alternative: (binary_expression
+        left: (identifier)
+        right: (function_call name: (identifier) arguments: (arguments (binary_expression left: (identifier) right: (number))))))))
+
+==================
+Recursive function — fibonacci
+==================
+
+function fib(n) = n <= 1 ? n : fib(n-1) + fib(n-2);
+
+---
+
+(source_file
+  (function_item
+    name: (identifier)
+    parameters: (parameters (parameter (identifier)))
+    (expression (ternary_expression
+      condition: (binary_expression left: (identifier) right: (number))
+      consequence: (identifier)
+      alternative: (binary_expression
+        left: (function_call name: (identifier) arguments: (arguments (binary_expression left: (identifier) right: (number))))
+        right: (function_call name: (identifier) arguments: (arguments (binary_expression left: (identifier) right: (number))))))))

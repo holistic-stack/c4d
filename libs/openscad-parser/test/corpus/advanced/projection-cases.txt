@@ -1,0 +1,46 @@
+==================
+Projection cut=false with union
+==================
+
+projection(cut=false) union() { cube(10); sphere(5); }
+
+---
+
+(source_file
+  (transform_chain
+    (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (boolean))))
+    (transform_chain
+      (module_call name: (identifier) arguments: (arguments))
+      (union_block
+        (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))
+        (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))))))
+
+==================
+Nested projections
+==================
+
+projection(cut=false) projection(cut=true) cube(1);
+
+---
+
+(source_file
+  (transform_chain
+    (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (boolean))))
+    (transform_chain
+      (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (boolean))))
+      (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))))
+
+==================
+Projection with geometry crossing plane
+==================
+
+translate([0,0,10]) projection() cylinder(h=20, r=5);
+
+---
+
+(source_file
+  (transform_chain
+    (module_call name: (identifier) arguments: (arguments (list (number) (number) (number))))
+    (transform_chain
+      (module_call name: (identifier) arguments: (arguments))
+      (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (integer)) (assignment name: (identifier) value: (integer)))) (statement))))

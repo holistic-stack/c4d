@@ -1,0 +1,29 @@
+==================
+Square variants
+==================
+
+square(10);
+square([10,20], center=true);
+square(size=5, center=false);
+
+---
+
+(source_file
+  (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (list (integer) (integer)) (assignment name: (identifier) value: (boolean)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (integer)) (assignment name: (identifier) value: (boolean)))) (statement)))
+
+==================
+Circle radius and diameter with $fn
+==================
+
+$fn = 64;
+circle(r=5);
+circle(d=10);
+
+---
+
+(source_file
+  (var_declaration (assignment name: (special_variable (identifier)) value: (integer)))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (integer)))) (statement)))

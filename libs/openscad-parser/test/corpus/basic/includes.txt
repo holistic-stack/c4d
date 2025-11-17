@@ -1,0 +1,12 @@
+==================
+Include and use statements
+==================
+
+use <lib.scad>;
+include <lib.scad>;
+
+---
+
+(source_file
+  (use_statement (include_path))
+  (include_statement (include_path)))

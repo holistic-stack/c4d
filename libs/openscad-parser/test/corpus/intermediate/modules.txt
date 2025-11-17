@@ -1,0 +1,35 @@
+==================
+Module definitions — parameters and body
+==================
+
+module m(a, b=2, $fn=32,) {
+  translate([a,b,0]) cube(a);
+}
+
+---
+
+(source_file
+  (module_item
+    name: (identifier)
+    parameters: (parameters
+      (parameter (identifier))
+      (parameter (assignment name: (identifier) value: (number)))
+      (parameter (assignment name: (special_variable (identifier)) value: (number))))
+    body: (union_block
+      (transform_chain
+        (module_call name: (identifier) arguments: (arguments (list (identifier) (identifier) (number))))
+        (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement)))))
+
+==================
+Function definitions — positional parameters
+==================
+
+function add(x, y) = x + y;
+
+---
+
+(source_file
+  (function_item
+    name: (identifier)
+    parameters: (parameters (parameter (identifier)) (parameter (identifier)))
+    (expression (binary_expression left: (identifier) right: (identifier))))

@@ -1,0 +1,23 @@
+==================
+Assert statement and expression
+==================
+
+assert(true) cube(1);
+check = assert(true);
+
+---
+
+(source_file
+  (assert_statement arguments: (arguments (boolean)) statement: (transform_chain (module_call name: (identifier) arguments: (arguments (number))) (statement)))
+  (var_declaration (assignment name: (identifier) value: (assert_expression arguments: (arguments (boolean))))))
+
+==================
+Echo with trailing expression
+==================
+
+echo("value", 1) sphere(1);
+
+---
+
+(source_file
+  (echo_expression arguments: (arguments (string) (number)) (expression (transform_chain (module_call name: (identifier) arguments: (arguments (number))) (statement)))))

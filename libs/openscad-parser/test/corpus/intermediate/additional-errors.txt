@@ -1,0 +1,68 @@
+==================
+Unterminated list
+==================
+:error
+
+[1,2,3
+
+---
+
+
+==================
+Unterminated range
+==================
+:error
+
+[0:1:
+
+---
+
+
+==================
+Invalid dot notation non-identifier
+==================
+:error
+
+echo(object.1);
+
+---
+
+
+==================
+Malformed assign_block syntax
+==================
+:error
+
+assign () cube(1);
+
+---
+
+
+==================
+Malformed let_block syntax
+==================
+:error
+
+let () cube(1);
+
+---
+
+
+==================
+Empty parentheses in for
+==================
+:error
+
+for () cube(1);
+
+---
+
+
+==================
+Empty parentheses in intersection_for
+==================
+:error
+
+intersection_for () cube(1);
+
+---

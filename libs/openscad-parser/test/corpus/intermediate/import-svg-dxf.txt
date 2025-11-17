@@ -1,0 +1,12 @@
+==================
+Import SVG and DXF
+==================
+
+import("drawing.dxf", convexity=5);
+import("shape.svg", convexity=3);
+
+---
+
+(source_file
+  (transform_chain (module_call name: (identifier) arguments: (arguments (string) (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (string) (assignment name: (identifier) value: (integer)))) (statement)))

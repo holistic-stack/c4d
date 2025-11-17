@@ -1,0 +1,35 @@
+==================
+Module parameters with defaults — function, list, nested call
+==================
+
+module m(a=function (x) x + 1, b=[1,2], c=pow(2,3)) {
+  cube(a);
+}
+
+---
+
+(source_file
+  (module_item
+    name: (identifier)
+    parameters: (parameters
+      (parameter (assignment name: (identifier) value: (function_lit parameters: (parameters (parameter (identifier))) body: (binary_expression left: (identifier) right: (integer)))))
+      (parameter (assignment name: (identifier) value: (list (number) (number))))
+      (parameter (assignment name: (identifier) value: (function_call name: (identifier) arguments: (arguments (integer) (integer))))))
+    body: (union_block
+      (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement))))
+
+==================
+Function parameters with defaults — list and call
+==================
+
+function f(a=[1,2], b=pow(2,3)) = a[0] + b;
+
+---
+
+(source_file
+  (function_item
+    name: (identifier)
+    parameters: (parameters
+      (parameter (assignment name: (identifier) value: (list (number) (number))))
+      (parameter (assignment name: (identifier) value: (function_call name: (identifier) arguments: (arguments (integer) (integer))))))
+    (expression (binary_expression left: (index_expression value: (identifier) (expression (integer))) right: (identifier))))

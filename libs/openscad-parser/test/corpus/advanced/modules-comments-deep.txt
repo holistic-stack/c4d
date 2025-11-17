@@ -1,0 +1,25 @@
+==================
+Deep nested modules with interleaved comments
+==================
+
+/* outer */ module inner(n /* param */) {
+  // body
+  translate([n, 0, 0]) /* mid */ cube(n);
+}
+
+module middle(n) { /* middle */ inner(n); }
+
+module outer(n) { color("green") // color
+  middle(n); /* end */ }
+
+// call
+outer(4);
+
+---
+
+(source_file
+  (module_item name: (identifier) parameters: (parameters (parameter (identifier)))
+    body: (union_block (transform_chain (module_call name: (identifier) arguments: (arguments (list (identifier) (integer) (integer)))) (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement)))))
+  (module_item name: (identifier) parameters: (parameters (parameter (identifier))) body: (union_block (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement))))
+  (module_item name: (identifier) parameters: (parameters (parameter (identifier))) body: (union_block (transform_chain (module_call name: (identifier) arguments: (arguments (string))) (transform_chain (module_call name: (identifier) arguments: (arguments (identifier))) (statement)))))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement)))

@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+# Rust bindings
+bindings/rust/* linguist-generated
+Cargo.toml linguist-generated
+Cargo.lock linguist-generated

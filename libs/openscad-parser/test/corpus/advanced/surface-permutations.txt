@@ -1,0 +1,12 @@
+==================
+Surface permutations
+==================
+
+surface(file="heightmap.dat", convexity=12);
+surface(file="map.png", center=true);
+
+---
+
+(source_file
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (string)) (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (string)) (assignment name: (identifier) value: (boolean)))) (statement)))

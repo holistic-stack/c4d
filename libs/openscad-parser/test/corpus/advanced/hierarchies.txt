@@ -1,0 +1,19 @@
+==================
+Complex module hierarchies with modifiers
+==================
+
+# color("red") translate([1,2,3]) rotate([0,0,90]) scale([2,2,2]) cube(1);
+
+---
+
+(source_file
+  (transform_chain
+    (modifier)
+    (module_call name: (identifier) arguments: (arguments (string)))
+    (transform_chain
+      (module_call name: (identifier) arguments: (arguments (list (number) (number) (number))))
+      (transform_chain
+        (module_call name: (identifier) arguments: (arguments (list (number) (number) (number))))
+        (transform_chain
+          (module_call name: (identifier) arguments: (arguments (list (number) (number) (number))))
+          (transform_chain (module_call name: (identifier) arguments: (arguments (number))) (statement))))))

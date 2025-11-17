@@ -1,0 +1,18 @@
+==================
+Import extended formats and surface variants
+==================
+
+import("model.3mf", convexity=4);
+import("mesh.off", convexity=6);
+import("scene.amf", convexity=8);
+surface(file="heightmap.dat", center=false, convexity=12);
+surface(file="map.png", center=true, convexity=5);
+
+---
+
+(source_file
+  (transform_chain (module_call name: (identifier) arguments: (arguments (string) (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (string) (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (string) (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (string)) (assignment name: (identifier) value: (boolean)) (assignment name: (identifier) value: (integer)))) (statement))
+  (transform_chain (module_call name: (identifier) arguments: (arguments (assignment name: (identifier) value: (string)) (assignment name: (identifier) value: (boolean)) (assignment name: (identifier) value: (integer)))) (statement)))

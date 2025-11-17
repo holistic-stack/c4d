@@ -1,0 +1,26 @@
+==================
+Assert statement inside let block
+==================
+
+let (x = 1) assert(x > 0) cube(1);
+
+---
+
+(source_file
+  (let_block
+    (assignments (assignment name: (identifier) value: (integer)))
+    body: (assert_statement
+      arguments: (arguments (binary_expression left: (identifier) right: (integer)))
+      statement: (transform_chain (module_call name: (identifier) arguments: (arguments (integer))) (statement)))))
+
+==================
+Assert expression nested in function call
+==================
+
+res = cos(assert(true) 0);
+
+---
+
+(source_file
+  (var_declaration (assignment name: (identifier)
+    value: (function_call name: (identifier) arguments: (arguments (assert_expression arguments: (arguments (boolean)) (expression (integer))))))))
