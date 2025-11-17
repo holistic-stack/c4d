@@ -45,7 +45,7 @@ This project aims to create a comprehensive Rust port of the Manifold geometric 
 │              OpenSCAD Evaluator/Interpreter                  │
 │              (NEW: libs/openscad-eval)                       │
 └────────────────────────┬────────────────────────────────────┘
-                         │ Geometry Commands
+                         │ Evaluated Geometry Tree (IR, no vars/loops)
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Manifold Rust Port                              │

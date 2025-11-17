@@ -2,7 +2,12 @@
 
 ## Overview
 
-Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus file I/O and polish.
+Phase 5 implements the `libs/openscad-eval` crate and final integration glue between the OpenSCAD AST and
+`manifold-rs`, plus file I/O and polish. The evaluator is responsible for taking the typed OpenSCAD AST and
+fully resolving **all** language semantics (values, variables, scoping, functions, modules, `let/assign`,
+`children`, `for`/`intersection_for`, `if/else`, ranges, list comprehensions, etc.) into a **clean geometry
+IR / command list** with **no remaining unevaluated expressions or control flow** before handing off to
+`manifold-rs` primitives, transforms, booleans and special operations.
 
 **Duration**: 2-3 weeks  
 **Dependencies**: Phase 1-4
@@ -33,15 +38,61 @@ Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus fi
        Number(f64),
        String(String),
        List(Vec<Value>),
-       Geometry(Manifold),  // 3D geometry
-       CrossSection(CrossSection),  // 2D geometry
+       // Geometry values are REFERENCES into the fully-evaluated geometry IR.
+       // By the time a Value::Geometry or Value::CrossSection is created, all
+       // OpenSCAD variables, ranges, loops, conditionals, module/function calls,
+       // let/assign bindings, and children() expansions that contribute to it
+       // have already been resolved.
+       Geometry(GeometryId),        // 3D geometry handle
+       CrossSection(CrossSectionId),// 2D geometry handle
    }
-   
+
+   #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+   pub struct GeometryId(pub usize);
+
+   #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+   pub struct CrossSectionId(pub usize);
+
    impl Value {
        pub fn as_number(&self) -> Result<f64>;
        pub fn as_vec3(&self) -> Result<Vec3>;
        pub fn as_bool(&self) -> Result<bool>;
        pub fn to_geometry(&self) -> Result<Manifold>;
+   }
+   ```
+
+2. **Define geometry IR / command list**
+   ```rust
+   // In libs/openscad-eval/src/geometry_ir.rs
+
+   /// Fully evaluated geometry tree with no remaining OpenSCAD control flow.
+   /// All parameters are concrete numbers/booleans/strings/vectors.
+   pub enum GeometryNode {
+       /// Primitive geometry like cube(), sphere(), cylinder(), polyhedron(), etc.
+       Primitive {
+           kind: PrimitiveKind,
+           params: PrimitiveParams,
+       },
+
+       /// Transformations such as translate(), rotate(), scale(), mirror(), resize(), multmatrix().
+       Transform {
+           kind: TransformKind,
+           params: TransformParams,
+           child: GeometryId,
+       },
+
+       /// Boolean and related set operations: union(), difference(), intersection(), hull(), minkowski().
+       Boolean {
+           kind: BooleanKind,
+           children: Vec<GeometryId>,
+       },
+
+       /// Special operations that bridge to I/O or 2D/3D conversions: projection(), surface(), import(), render().
+       Special {
+           kind: SpecialKind,
+           params: SpecialParams,
+           children: Vec<GeometryId>,
+       },
    }
    ```
 
@@ -81,8 +132,10 @@ Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus fi
 
 **Acceptance Criteria**:
 - ✅ Design is complete
-- ✅ Types defined
-- ✅ Interfaces clear
+- ✅ Value and geometry IR types defined
+- ✅ Evaluation boundary to `manifold-rs` is clear (all language semantics resolved before geometry)
+- ✅ All OpenSCAD language constructs (values, variables, ranges, functions, modules, let/assign,
+  children, for/intersection_for, if/else) have a clear evaluation model
 
 **Effort**: 4-6 hours
 
@@ -133,11 +186,12 @@ Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus fi
 5. **Write tests**
 
 **Acceptance Criteria**:
-- ✅ All expression types evaluate correctly
-- ✅ Operators work
-- ✅ Lists work
-- ✅ Function calls work
-- ✅ Tests pass
+- ✅ All expression types evaluate correctly (numbers, booleans, strings, vectors, ranges, lists)
+- ✅ Arithmetic, comparison, logical and ternary operators match official OpenSCAD semantics
+- ✅ List construction, indexing (including negative indices) and list comprehensions work
+- ✅ Range expressions `[start:end]` and `[start:step:end]` work with positive/negative steps
+- ✅ Built-in math/utility functions and user-defined functions work
+- ✅ Tests pass and follow TDD (tests written before implementation, no mocks except I/O)
 
 **Effort**: 16-20 hours
 
@@ -338,14 +392,14 @@ Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus fi
 
 3. **Implement intersection**
 
-4. **Implement for loops**
+4. **Implement for and intersection_for loops**
    ```rust
    fn eval_for_block(for_block: &ForBlock, ctx: &mut EvalContext) -> Result<Vec<Manifold>> {
        let mut results = Vec::new();
        
        match &for_block.binds {
            ForBinds::Assigns(assigns) => {
-               // Iterate over ranges/lists
+               // Iterate over ranges/lists exactly as OpenSCAD does
                for values in iterate_assignments(assigns, ctx)? {
                    ctx.push_scope();
                    for (name, value) in values {
@@ -361,6 +415,10 @@ Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus fi
                // ...
            }
        }
+
+       // Note: intersection_for is represented in the AST and lowered to a Boolean::Intersection
+       // node over all loop iterations in the geometry IR. By the time we leave eval_for_block,
+       // no remaining intersection_for construct exists; only concrete geometry combinations remain.
        
        Ok(results)
    }
@@ -368,13 +426,21 @@ Phase 5 creates the bridge between OpenSCAD AST and Manifold operations, plus fi
 
 5. **Implement if/else**
 
-6. **Write tests**
+6. **Handle children() and let/assign scoping in modules**
+   - children() and children(i) must expand to evaluated child geometry lists
+   - let() (and legacy assign()) introduce new lexical scopes that shadow outer bindings
+   - include/use files populate the module/function tables in `EvalContext` before evaluation
+
+7. **Write tests**
 
 **Acceptance Criteria**:
-- ✅ Boolean operations work
-- ✅ For loops work
-- ✅ If/else works
-- ✅ Tests pass
+- ✅ union(), difference(), intersection(), hull(), minkowski() and related constructs evaluate correctly
+- ✅ for and intersection_for loops work and produce the same geometry as reference OpenSCAD for test cases
+- ✅ if/else conditionals work and only the taken branches contribute geometry
+- ✅ children() expansion in user-defined modules matches OpenSCAD semantics
+- ✅ let/assign scoping and variable shadowing match OpenSCAD rules
+- ✅ No unevaluated control-flow constructs remain once evaluation completes (only geometry IR)
+- ✅ Tests pass and follow the no-mocks policy (real implementations, mocks only for I/O)
 
 **Effort**: 16-20 hours
 

@@ -94,6 +94,10 @@ fn read_stmt(source: &str, node: tree_sitter::Node, ctx: &mut Context) -> Stmt {
             }
             Stmt::Empty
         }
+        "module_call" => {
+            let call = read_module_call(source, node);
+            Stmt::TransformChain(TransformChain { call, tail: Box::new(Stmt::Empty), span: Span::from_node(source, node) })
+        }
         "union_block" => {
             let mut items = Vec::new();
             for i in 0..node.child_count() {
@@ -102,6 +106,28 @@ fn read_stmt(source: &str, node: tree_sitter::Node, ctx: &mut Context) -> Stmt {
                 }
             }
             Stmt::UnionBlock(Block { items, span: Span::from_node(source, node) })
+        }
+        "difference_block" => {
+            let mut items = Vec::new();
+            for i in 0..node.child_count() {
+                if let Some(ch) = node.child(i) {
+                    if let Some(it) = read_item(source, ch, ctx) { items.push(it); }
+                }
+            }
+            let block = Stmt::UnionBlock(Block { items, span: Span::from_node(source, node) });
+            let call = ModuleCall { name: Ident { name: "difference".to_string(), span: Span::from_node(source, node) }, args: Vec::new(), span: Span::from_node(source, node) };
+            Stmt::TransformChain(TransformChain { call, tail: Box::new(block), span: Span::from_node(source, node) })
+        }
+        "intersection_block" => {
+            let mut items = Vec::new();
+            for i in 0..node.child_count() {
+                if let Some(ch) = node.child(i) {
+                    if let Some(it) = read_item(source, ch, ctx) { items.push(it); }
+                }
+            }
+            let block = Stmt::UnionBlock(Block { items, span: Span::from_node(source, node) });
+            let call = ModuleCall { name: Ident { name: "intersection".to_string(), span: Span::from_node(source, node) }, args: Vec::new(), span: Span::from_node(source, node) };
+            Stmt::TransformChain(TransformChain { call, tail: Box::new(block), span: Span::from_node(source, node) })
         }
         "transform_chain" => {
             let mut call_node = None;

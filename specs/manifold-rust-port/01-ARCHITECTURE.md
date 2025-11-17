@@ -267,6 +267,56 @@ libs/manifold-rs/
     └── openscad_pipeline.rs
 ```
 
+### libs/openscad-eval Module Organization
+
+The `libs/openscad-eval` crate evaluates the typed OpenSCAD AST into a fully resolved
+geometry IR (no remaining variables, loops, or control flow) that can be consumed by
+`libs/manifold-rs`. Its layout mirrors the same SRP, 500-line-per-file, and co-located
+tests rules:
+
+```
+libs/openscad-eval/
+├── src/
+│   ├── lib.rs              # Public Evaluator API
+│   ├── config.rs           # Evaluator-wide constants ($fn, $fa, $fs, limits)
+│   ├── error.rs            # EvalError and Result<T> alias
+│   │
+│   ├── value/              # Value enum, GeometryId, helpers
+│   │   ├── mod.rs
+│   │   └── tests.rs
+│   ├── geometry_ir/        # Fully evaluated geometry tree (IR)
+│   │   ├── mod.rs
+│   │   └── tests.rs
+│   ├── context/            # EvalContext, scopes, module/function tables
+│   │   ├── mod.rs
+│   │   └── tests.rs
+│   ├── builtins/           # Built-in functions and modules (3D, 2D, transforms, booleans, special)
+│   │   ├── mod.rs
+│   │   └── ... tests.rs
+│   ├── eval_expr/          # Expression evaluation (literals, operators, lists, calls)
+│   │   ├── mod.rs
+│   │   └── ... tests.rs
+│   ├── eval_stmt/          # Statement evaluation (primitives, transforms, booleans, control flow, modules)
+│   │   ├── mod.rs
+│   │   └── ... tests.rs
+│   ├── frontend/           # High-level Evaluator, AST bridge
+│   │   ├── mod.rs
+│   │   └── tests.rs
+│   ├── loader/             # include/use resolution and other file-based loading (I/O only)
+│   │   ├── mod.rs
+│   │   └── tests.rs
+│   └── utils/              # Shared small helpers (no domain logic)
+│       ├── mod.rs
+│       └── tests.rs
+│
+├── tests/                  # Integration & e2e tests (OpenSCAD → eval → manifold-rs)
+└── benches/                # Criterion benchmarks for evaluator hot paths
+```
+
+All modules follow the same standards as `libs/manifold-rs`: one responsibility per
+folder, `mod.rs + tests.rs`, and files kept under 500 lines. See
+`08-CODING-STANDARDS.md` and `05-TESTING-STRATEGY.md` for details.
+
 ## Algorithm Design
 
 ### Boolean Operations
