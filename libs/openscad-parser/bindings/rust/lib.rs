@@ -18,14 +18,13 @@
 //! [`Parser`]: https://docs.rs/tree-sitter/0.25.10/tree_sitter/struct.Parser.html
 //! [tree-sitter]: https://tree-sitter.github.io/
 
-use tree_sitter_language::LanguageFn;
-
 extern "C" {
-    fn tree_sitter_openscad() -> *const ();
+    fn tree_sitter_openscad() -> tree_sitter::Language;
 }
 
-/// The tree-sitter [`LanguageFn`] for this grammar.
-pub const LANGUAGE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_openscad) };
+pub fn language() -> tree_sitter::Language {
+    unsafe { tree_sitter_openscad() }
+}
 
 /// The content of the [`node-types.json`] file for this grammar.
 ///
@@ -45,7 +44,7 @@ mod tests {
     fn test_can_load_grammar() {
         let mut parser = tree_sitter::Parser::new();
         parser
-            .set_language(&super::LANGUAGE.into())
+            .set_language(&super::language())
             .expect("Error loading Openscad parser");
     }
 }

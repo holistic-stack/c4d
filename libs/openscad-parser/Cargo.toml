@@ -3,4 +3,8 @@ name = "openscad-parser"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "openscad_parser"
+path = "src/lib.rs"
+
 [dependencies]
