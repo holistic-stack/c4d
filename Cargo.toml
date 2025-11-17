@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "libs/openscad-parser",
+    "libs/openscad-ast",
+    "libs/openscad-manifold",
+    "libs/wasm"
+]
