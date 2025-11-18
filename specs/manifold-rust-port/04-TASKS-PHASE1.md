@@ -109,13 +109,14 @@ Phase 1 establishes the foundation for the Manifold Rust port with core data str
 
 **Subtasks**:
 
-1. **Implement Vec3 utilities (src/vec.rs)**
+1. **Implement Vec3 utilities (src/core/vec.rs)**
    ```rust
-   pub use nalgebra::{Vector2, Vector3, Matrix3x4};
-   
-   pub type Vec3 = Vector3<f64>;
-   pub type Vec2 = Vector2<f64>;
-   pub type Mat3x4 = Matrix3x4<f64>;
+   // CRITICAL: Use glam's f64 variants (DVec3, DMat4, DQuat)
+   // for all geometry calculations to avoid precision errors in CSG.
+   pub type Vec3 = glam::DVec3;  // f64, NOT f32!
+   pub type Vec2 = glam::DVec2;  // f64
+   pub type Mat4 = glam::DMat4;  // f64
+   pub type Quat = glam::DQuat;  // f64
    
    pub fn vec3(x: f64, y: f64, z: f64) -> Vec3 {
        Vec3::new(x, y, z)
@@ -340,6 +341,30 @@ Phase 1 establishes the foundation for the Manifold Rust port with core data str
 - ✅ Tests cover all error types
 
 **Effort**: 4-6 hours
+
+---
+
+## Task 1.6: Visual Regression Testing Tool
+
+**Description**: Create a simple CLI tool to render meshes to images for visual regression testing.
+
+**Why**: It is very hard to debug geometry issues by looking at coordinate lists. Visual comparison is essential.
+
+**Subtasks**:
+1. **Create `tools/render_mesh` binary**
+   - Read STL/OBJ file
+   - Render to PNG using a software rasterizer (e.g., `tiny-skia` or similar headless renderer)
+   - Or output a checksum of the mesh topology/geometry
+2. **Integrate with CI**
+   - Add a step to GitHub Actions to generate images for test outputs
+   - Upload images as artifacts
+
+**Acceptance Criteria**:
+- ✅ CLI tool generates PNG from mesh
+- ✅ Can be run in headless CI environment
+- ✅ "Golden" images strategy defined
+
+**Effort**: 6-8 hours
 
 ---
 

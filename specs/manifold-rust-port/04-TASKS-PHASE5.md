@@ -14,130 +14,141 @@ IR / command list** with **no remaining unevaluated expressions or control flow*
 
 ---
 
-## Task 5.1: OpenSCAD Evaluator Design
+## Task 5.1: [MOVED TO PHASE 2] OpenSCAD Evaluator Design
 
-**Description**: Design the interpreter that converts OpenSCAD AST to Manifold operations.
+**Note**: This task has been moved to Phase 2 (Task 2.0) to ensure the Geometry IR is defined early, acting as a contract between the language layer and the geometry layer.
 
-**Why**: This is the bridge that makes the entire pipeline work.
+---
 
-**Context**: The evaluator walks the OpenSCAD AST and:
-- Evaluates expressions to values
-- Executes statements to produce geometry
-- Manages variable scopes
-- Handles modules and functions
+## Task 5.1b: Source Location Tracking (Span Propagation)
+
+**Description**: Implement source location tracking throughout the evaluation pipeline so errors can highlight the exact line/column in the UI.
+
+**Why**: When a user writes `cube("invalid")`, the error should show the exact location in the source code, not just "type error". This is critical for usability in the web playground.
 
 **Subtasks**:
 
-1. **Define Value type**
+1. **Define Span type**
    ```rust
-   // In libs/openscad-eval/src/value.rs
-   #[derive(Clone, Debug)]
-   pub enum Value {
-       Undef,
-       Bool(bool),
+   // In libs/openscad-eval/src/span.rs
+   #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+   pub struct Span {
+       pub start: usize,  // Byte offset in source
+       pub end: usize,
+   }
+   
+   impl Span {
+       pub fn new(start: usize, end: usize) -> Self {
+           Self { start, end }
+       }
+       
+       pub fn to_line_col(&self, source: &str) -> (usize, usize) {
+           // Convert byte offset to line:column
+           let before = &source[..self.start];
+           let line = before.lines().count();
+           let col = before.lines().last().map(|l| l.len()).unwrap_or(0);
+           (line, col)
+       }
+   }
+   ```
+
+2. **Add Spanned wrapper**
+   ```rust
+   #[derive(Debug, Clone)]
+   pub struct Spanned<T> {
+       pub value: T,
+       pub span: Span,
+   }
+   
+   impl<T> Spanned<T> {
+       pub fn new(value: T, span: Span) -> Self {
+           Self { value, span }
+       }
+   }
+   ```
+
+3. **Update Value and GeometryIR to carry spans**
+   ```rust
+   // Instead of: enum Value { Number(f64), ... }
+   pub type Value = Spanned<ValueKind>;
+   
+   pub enum ValueKind {
        Number(f64),
+       Bool(bool),
        String(String),
-       List(Vec<Value>),
-       // Geometry values are REFERENCES into the fully-evaluated geometry IR.
-       // By the time a Value::Geometry or Value::CrossSection is created, all
-       // OpenSCAD variables, ranges, loops, conditionals, module/function calls,
-       // let/assign bindings, and children() expansions that contribute to it
-       // have already been resolved.
-       Geometry(GeometryId),        // 3D geometry handle
-       CrossSection(CrossSectionId),// 2D geometry handle
-   }
-
-   #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-   pub struct GeometryId(pub usize);
-
-   #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-   pub struct CrossSectionId(pub usize);
-
-   impl Value {
-       pub fn as_number(&self) -> Result<f64>;
-       pub fn as_vec3(&self) -> Result<Vec3>;
-       pub fn as_bool(&self) -> Result<bool>;
-       pub fn to_geometry(&self) -> Result<Manifold>;
-   }
-   ```
-
-2. **Define geometry IR / command list**
-   ```rust
-   // In libs/openscad-eval/src/geometry_ir.rs
-
-   /// Fully evaluated geometry tree with no remaining OpenSCAD control flow.
-   /// All parameters are concrete numbers/booleans/strings/vectors.
-   pub enum GeometryNode {
-       /// Primitive geometry like cube(), sphere(), cylinder(), polyhedron(), etc.
-       Primitive {
-           kind: PrimitiveKind,
-           params: PrimitiveParams,
-       },
-
-       /// Transformations such as translate(), rotate(), scale(), mirror(), resize(), multmatrix().
-       Transform {
-           kind: TransformKind,
-           params: TransformParams,
-           child: GeometryId,
-       },
-
-       /// Boolean and related set operations: union(), difference(), intersection(), hull(), minkowski().
-       Boolean {
-           kind: BooleanKind,
-           children: Vec<GeometryId>,
-       },
-
-       /// Special operations that bridge to I/O or 2D/3D conversions: projection(), surface(), import(), render().
-       Special {
-           kind: SpecialKind,
-           params: SpecialParams,
-           children: Vec<GeometryId>,
-       },
-   }
-   ```
-
-2. **Define evaluation context**
-   ```rust
-   pub struct EvalContext {
-       scopes: Vec<Scope>,
-       modules: HashMap<String, ModuleDef>,
-       functions: HashMap<String, FunctionDef>,
-       special_vars: SpecialVars,
+       Vector(Vec<Value>),
+       // ...
    }
    
-   struct SpecialVars {
-       fn_: f64,  // $fn
-       fa: f64,  // $fa
-       fs: f64,  // $fs
-       t: f64,   // $t (animation)
-   }
-   
-   impl EvalContext {
-       pub fn new() -> Self;
-       pub fn push_scope(&mut self);
-       pub fn pop_scope(&mut self);
-       pub fn define_var(&mut self, name: &str, value: Value);
-       pub fn lookup_var(&self, name: &str) -> Option<&Value>;
+   // Similarly for GeometryIR
+   pub type GeometryCommand = Spanned<GeometryCommandKind>;
+   ```
+
+4. **Update ManifoldError to include span**
+   ```rust
+   #[derive(Debug, thiserror::Error)]
+   pub enum ManifoldError {
+       #[error("Type error at {span:?}: expected {expected}, got {got}")]
+       TypeError {
+           expected: String,
+           got: String,
+           span: Option<Span>,
+       },
+       
+       #[error("Undefined variable '{name}' at {span:?}")]
+       UndefinedVariable {
+           name: String,
+           span: Option<Span>,
+       },
+       // ... all errors include span
    }
    ```
 
-3. **Design evaluator trait**
+5. **Propagate spans through evaluator**
+   - Every `eval_*` function preserves span from AST node
+   - Operators combine spans from operands
+   - Function calls use the call site span
+
+6. **Expose span in WASM error**
    ```rust
-   pub trait Evaluator {
-       fn eval_expr(&mut self, expr: &Expr, ctx: &mut EvalContext) -> Result<Value>;
-       fn eval_stmt(&mut self, stmt: &Stmt, ctx: &mut EvalContext) -> Result<Vec<Manifold>>;
-       fn eval_item(&mut self, item: &Item, ctx: &mut EvalContext) -> Result<Vec<Manifold>>;
+   // In libs/wasm
+   #[wasm_bindgen]
+   pub struct ErrorWithLocation {
+       message: String,
+       line: usize,
+       column: usize,
+   }
+   
+   pub fn parse_openscad_to_mesh(source: &str) -> Result<MeshBuffers, ErrorWithLocation> {
+       match manifold_rs::parse_and_evaluate_openscad(source) {
+           Ok(mesh) => Ok(mesh_to_buffers(mesh)),
+           Err(e) => {
+               let span = e.span().unwrap_or(Span::new(0, 0));
+               let (line, col) = span.to_line_col(source);
+               Err(ErrorWithLocation {
+                   message: e.to_string(),
+                   line,
+                   column: col,
+               })
+           }
+       }
    }
    ```
+
+7. **Write tests**
+   - Test span extraction from AST
+   - Test span propagation through operations
+   - Test error reporting with correct line numbers
 
 **Acceptance Criteria**:
-- ✅ Design is complete
-- ✅ Value and geometry IR types defined
-- ✅ Evaluation boundary to `manifold-rs` is clear (all language semantics resolved before geometry)
-- ✅ All OpenSCAD language constructs (values, variables, ranges, functions, modules, let/assign,
-  children, for/intersection_for, if/else) have a clear evaluation model
+- ✅ All `Value` and `GeometryCommand` types carry `Span`
+- ✅ `ManifoldError` includes `Option<Span>`
+- ✅ Spans are preserved through the entire evaluation pipeline
+- ✅ WASM errors include line/column numbers
+- ✅ Playground can highlight the exact error location in the editor
+- ✅ Tests verify correct span tracking
 
-**Effort**: 4-6 hours
+**Effort**: 12-16 hours
 
 ---
 
@@ -191,6 +202,7 @@ IR / command list** with **no remaining unevaluated expressions or control flow*
 - ✅ List construction, indexing (including negative indices) and list comprehensions work
 - ✅ Range expressions `[start:end]` and `[start:step:end]` work with positive/negative steps
 - ✅ Built-in math/utility functions and user-defined functions work
+- ✅ Deep recursion cases do not overflow the stack (protected by `stacker`)
 - ✅ Tests pass and follow TDD (tests written before implementation, no mocks except I/O)
 
 **Effort**: 16-20 hours
@@ -332,6 +344,159 @@ IR / command list** with **no remaining unevaluated expressions or control flow*
 - ✅ Tests pass
 
 **Effort**: 12-16 hours
+
+---
+
+## Task 5.4b: Geometry Caching (Preview Speedup)
+
+**Description**: Implement memoization/caching for evaluated geometry to provide instant feedback when users tweak parameters.
+
+**Why**: OpenSCAD users expect instant preview updates. If a user changes a `translate()` at the top level, we shouldn't re-tessellate the complex `sphere($fn=100)` inside it. Caching unchanged subtrees provides 10-100x speedup for interactive editing.
+
+**Subtasks**:
+
+1. **Design cache key**
+   ```rust
+   use std::hash::{Hash, Hasher};
+   use std::collections::hash_map::DefaultHasher;
+   
+   // Hash the AST node + current variable context
+   fn compute_cache_key(node: &AstNode, ctx: &EvalContext) -> u64 {
+       let mut hasher = DefaultHasher::new();
+       
+       // Hash the AST structure
+       format!("{:?}", node).hash(&mut hasher);
+       
+       // Hash only the variables this node depends on
+       for var in node.free_variables() {
+           if let Some(value) = ctx.get_var(var) {
+               format!("{:?}", value).hash(&mut hasher);
+           }
+       }
+       
+       hasher.finish()
+   }
+   ```
+
+2. **Implement cache storage**
+   ```rust
+   use std::collections::HashMap;
+   use std::sync::Arc;
+   
+   pub struct GeometryCache {
+       cache: HashMap<u64, Arc<Manifold>>,
+       hits: usize,
+       misses: usize,
+   }
+   
+   impl GeometryCache {
+       pub fn new() -> Self {
+           Self {
+               cache: HashMap::new(),
+               hits: 0,
+               misses: 0,
+           }
+       }
+       
+       pub fn get(&mut self, key: u64) -> Option<Arc<Manifold>> {
+           if let Some(manifold) = self.cache.get(&key) {
+               self.hits += 1;
+               Some(Arc::clone(manifold))
+           } else {
+               self.misses += 1;
+               None
+           }
+       }
+       
+       pub fn insert(&mut self, key: u64, manifold: Manifold) {
+           self.cache.insert(key, Arc::new(manifold));
+       }
+       
+       pub fn stats(&self) -> (usize, usize, f64) {
+           let total = self.hits + self.misses;
+           let hit_rate = if total > 0 {
+               self.hits as f64 / total as f64
+           } else {
+               0.0
+           };
+           (self.hits, self.misses, hit_rate)
+       }
+   }
+   ```
+
+3. **Integrate into evaluator**
+   ```rust
+   pub struct Evaluator {
+       context: EvalContext,
+       cache: GeometryCache,
+   }
+   
+   impl Evaluator {
+       fn eval_geometry(&mut self, node: &AstNode) -> Result<Manifold> {
+           // Compute cache key
+           let key = compute_cache_key(node, &self.context);
+           
+           // Check cache
+           if let Some(cached) = self.cache.get(key) {
+               return Ok((*cached).clone());  // Arc clone is cheap
+           }
+           
+           // Cache miss: evaluate
+           let manifold = self.eval_geometry_uncached(node)?;
+           
+           // Store in cache
+           self.cache.insert(key, manifold.clone());
+           
+           Ok(manifold)
+       }
+   }
+   ```
+
+4. **Expose to WASM/playground**
+   ```rust
+   // In libs/wasm
+   #[wasm_bindgen]
+   pub struct OpenScadEngine {
+       evaluator: Evaluator,
+   }
+   
+   #[wasm_bindgen]
+   impl OpenScadEngine {
+       #[wasm_bindgen(constructor)]
+       pub fn new() -> Self {
+           Self {
+               evaluator: Evaluator::new(),
+           }
+       }
+       
+       pub fn parse_and_render(&mut self, source: &str) -> Result<MeshBuffers, JsValue> {
+           // Cache persists across calls!
+           let mesh = self.evaluator.evaluate_source(source)?;
+           Ok(mesh_to_buffers(mesh))
+       }
+       
+       pub fn clear_cache(&mut self) {
+           self.evaluator.clear_cache();
+       }
+   }
+   ```
+
+5. **Write tests**
+   - Test cache hit/miss behavior
+   - Test that changing a transform doesn't invalidate child geometry
+   - Benchmark speedup on complex models
+
+**Acceptance Criteria**:
+- ✅ Geometry cache implemented and integrated
+- ✅ Cache keys correctly capture AST + variable dependencies
+- ✅ Changing a top-level transform doesn't re-evaluate children
+- ✅ Arc-based cloning is cheap (< 1μs)
+- ✅ Benchmarks show 10-100x speedup for incremental edits
+- ✅ Tests verify correct cache behavior
+
+**Effort**: 12-16 hours
+
+**Impact**: This is a **critical UX feature**. Without caching, complex models take seconds to render on every keystroke, making the playground unusable.
 
 ---
 
@@ -696,13 +861,32 @@ JavaScript via WebAssembly.
 
 **Subtasks**:
 
-1. **Design wasm-facing API**
+1. **Design wasm-facing API (Zero-Copy)**
    - Choose a single entry point, e.g. `parse_openscad_to_mesh(source: &str) -> JsValue`.
-   - Decide on a MeshGL-compatible JS representation (positions/index arrays).
+   - **Zero-Copy Strategy**: Instead of serializing MeshGL to JS objects (slow for large meshes), expose pointers to Wasm memory.
+   - Return a JS object containing `ptr` and `len` for vertex and index buffers.
+   - JS side creates `Float32Array` / `Uint32Array` views directly on Wasm memory.
 
-2. **Implement wasm-bindgen wrapper**
+2. **Implement wasm-bindgen wrapper with zero-copy buffers**
    - Call `manifold_rs::parse_and_evaluate_openscad(source)` from `libs/wasm`.
-   - Map `MeshGL` into a JS object/typed arrays.
+   - **CRITICAL**: Use zero-copy buffer sharing for large meshes (100k+ triangles):
+     ```rust
+     #[wasm_bindgen]
+     pub fn parse_openscad_to_mesh(source: &str) -> Result<MeshBuffers, JsValue> {
+         let mesh = manifold_rs::parse_and_evaluate_openscad(source)
+             .map_err(to_js_error)?;
+         
+         // Expose vertex data as pointer to WASM memory (zero-copy)
+         // JavaScript can create Float32Array view directly on WASM memory
+         Ok(MeshBuffers {
+             vertex_ptr: mesh.vertices.as_ptr() as u32,
+             vertex_count: mesh.vertices.len(),
+             index_ptr: mesh.indices.as_ptr() as u32,
+             index_count: mesh.indices.len(),
+         })
+     }
+     ```
+   - Avoid serializing to JS objects (causes browser lag for complex models).
    - Ensure all errors are mapped to JS exceptions with clear messages (no silent failures).
 
 3. **Add wasm-specific tests**
@@ -710,11 +894,24 @@ JavaScript via WebAssembly.
      environment.
    - Verify triangle/vertex counts for simple models (cube, sphere, cylinder).
 
+4. **Initialize panic hook for better debugging**
+   ```rust
+   // In libs/wasm/src/lib.rs
+   #[wasm_bindgen(start)]
+   pub fn init() {
+       console_error_panic_hook::set_once();
+   }
+   ```
+   - Add `console_error_panic_hook = "0.1.7"` to `libs/wasm` dependencies.
+   - Ensures Rust panics in WASM surface meaningful messages in the browser
+     console instead of `unreachable`.
+
 **Acceptance Criteria**:
 - ✅ `libs/wasm` builds and exports a stable `parse_openscad_to_mesh`-style API
 - ✅ Internally uses `libs/manifold-rs` OpenSCAD helper, which itself uses `openscad-ast` and
   `openscad-eval`
 - ✅ Errors are explicit and visible in JavaScript (no silent failures)
+- ✅ Panics in WASM are reported with readable messages via `console_error_panic_hook`
 - ✅ Basic wasm tests pass in CI
 
 **Effort**: 8-12 hours

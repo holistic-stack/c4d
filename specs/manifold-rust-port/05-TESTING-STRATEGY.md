@@ -361,17 +361,145 @@ fn test_parse_openscad_to_mesh_js_api() {
 
 ---
 
-### 7. Visual Regression Tests (Optional)
+### 7. Visual/Golden Tests (REQUIRED)
 
-**Purpose**: Detect visual changes in rendered output.
+**Purpose**: Catch geometry bugs that are invisible in coordinate lists but obvious visually.
+
+**Why Required**: Debugging "Task 2.2 Sphere" by reading 200 Vec3 coordinates is impossible. Visual/file-based validation is essential.
+
+**Implementation**:
+
+1. **STL/OBJ Golden Files (Phase 1+)**
+   ```rust
+   #[test]
+   fn test_cube_output_matches_golden() {
+       let cube = Manifold::cube(2.0, 2.0, 2.0, false);
+       let stl_bytes = cube.to_stl();
+       
+       // Compare against checked-in golden file
+       let golden = include_bytes!("../golden/cube_2x2x2.stl");
+       assert_eq!(stl_bytes, golden, "Cube STL changed! Inspect diff.");
+   }
+   ```
+
+2. **CLI Tool for Visual Inspection**
+   - Create `libs/manifold-rs/bin/inspect.rs`:
+     ```rust
+     // Usage: cargo run --bin inspect cube 2 2 2
+     fn main() {
+         let manifold = match args {
+             "cube" => Manifold::cube(x, y, z, false),
+             "sphere" => Manifold::sphere(r, segments),
+             // ...
+         };
+         
+         // Output STL to stdout or file
+         write_stl(manifold, "output.stl");
+     }
+     ```
+   - Open `output.stl` in MeshLab/Blender for visual verification
+
+3. **GitHub Actions Artifact**
+   - CI uploads STL/OBJ files as artifacts
+   - Reviewers can download and inspect changes
+
+4. **Optional: Headless Rendering**
+   - Use a headless renderer (e.g., `resvg` for 2D, simple raycaster for 3D)
+   - Generate PNG screenshots for visual regression
+   - Compare with golden images using pixel diff
 
 **Process**:
-1. Generate reference images for test models
-2. Re-render after changes
-3. Compare images pixel-by-pixel
-4. Flag differences for review
+1. Generate golden files for core primitives (cube, sphere, cylinder)
+2. Check golden files into `tests/golden/` directory
+3. Tests compare new output against golden files
+4. On intentional change, regenerate golden files and review diff
 
-**Tools**: Consider using image comparison libraries
+---
+
+### 8. Fuzz Testing for Boolean Operations (REQUIRED for Phase 3)
+
+**Purpose**: Find edge cases and crashes in CSG operations before users do.
+
+**Why Critical**: Boolean operations are the most complex and failure-prone part of CSG.
+
+**Implementation**:
+
+```rust
+// tests/fuzz_booleans.rs
+use proptest::prelude::*;
+use manifold_rs::*;
+
+prop_compose! {
+    fn random_transform()(x in -10.0..10.0, y in -10.0..10.0, z in -10.0..10.0,
+                          rx in 0.0..360.0, ry in 0.0..360.0, rz in 0.0..360.0,
+                          s in 0.1..5.0) -> Mat4 {
+        Mat4::from_translation(Vec3::new(x, y, z))
+            * Mat4::from_rotation_z(rz.to_radians())
+            * Mat4::from_rotation_y(ry.to_radians())
+            * Mat4::from_rotation_x(rx.to_radians())
+            * Mat4::from_scale(Vec3::splat(s))
+    }
+}
+
+prop_compose! {
+    fn random_primitive()(choice in 0..3u8, transform in random_transform()) -> Manifold {
+        let base = match choice {
+            0 => Manifold::cube(1.0, 1.0, 1.0, false),
+            1 => Manifold::sphere(0.5, 16),
+            _ => Manifold::cylinder(0.3, 1.0, 16, 1),
+        };
+        base.transform(&transform)
+    }
+}
+
+proptest! {
+    #[test]
+    fn fuzz_union_is_manifold(a in random_primitive(), b in random_primitive()) {
+        let result = a.union(&b);
+        
+        // CRITICAL: Result must always be manifold
+        prop_assert!(result.is_manifold(), "Union produced non-manifold mesh!");
+        
+        // Euler characteristic check (optional, depends on mesh type)
+        // V - E + F = 2 for closed manifold
+        let euler = result.num_vertices() - result.num_edges() + result.num_faces();
+        prop_assert_eq!(euler, 2, "Euler characteristic check failed");
+    }
+    
+    #[test]
+    fn fuzz_difference_is_manifold(a in random_primitive(), b in random_primitive()) {
+        let result = a.difference(&b);
+        prop_assert!(result.is_manifold(), "Difference produced non-manifold mesh!");
+    }
+    
+    #[test]
+    fn fuzz_intersection_is_manifold(a in random_primitive(), b in random_primitive()) {
+        let result = a.intersection(&b);
+        prop_assert!(result.is_manifold(), "Intersection produced non-manifold mesh!");
+    }
+}
+```
+
+**Configuration**:
+```toml
+# In Cargo.toml
+[dev-dependencies]
+proptest = "1.5"
+
+[[test]]
+name = "fuzz_booleans"
+harness = false  # Run with proptest harness
+```
+
+**CI Integration**:
+- Run fuzz tests on every PR (limit to 1000 cases for speed)
+- Nightly build runs extended fuzzing (10,000+ cases)
+- Save failing cases as regression tests
+
+**Expected Results**:
+- Catch 90% of boolean operation bugs before manual testing
+- Build confidence in geometric robustness
+- Discover edge cases for coplanar faces, near-miss intersections, etc.
 
 ---
 

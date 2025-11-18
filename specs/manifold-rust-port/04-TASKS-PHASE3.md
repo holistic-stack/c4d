@@ -9,6 +9,36 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
 
 ---
 
+## Task 3.0: Robust Geometric Predicates Strategy
+
+**Description**: Integrate the `robust` crate for exact geometric predicates to avoid floating-point precision issues in CSG operations.
+
+**Why**: Standard epsilon comparisons fail for critical edge cases:
+- Point-on-plane classification → sliver triangles
+- Coplanarity tests → non-manifold outputs
+- Edge-edge intersection → "nearly touching" surfaces treated as intersecting
+
+**Subtasks**:
+1. **Add `robust` dependency**
+   - Port of Shewchuk's predicates (or similar)
+2. **Implement predicate wrappers**
+   ```rust
+   pub fn orient3d(a: DVec3, b: DVec3, c: DVec3, d: DVec3) -> f64;
+   pub fn in_sphere(a: DVec3, b: DVec3, c: DVec3, d: DVec3, e: DVec3) -> f64;
+   ```
+3. **Define robustness policy**
+   - Use exact predicates for all point-plane classifications
+   - Use symbolic perturbation (or explicit handling) for degeneracies
+
+**Acceptance Criteria**:
+- ✅ Robust predicates integrated
+- ✅ Benchmarks comparing standard vs robust checks
+- ✅ Policy documented
+
+**Effort**: 4-6 hours
+
+---
+
 ## Task 3.1: Broad-Phase Collision Detection
 
 **Description**: Implement R-tree spatial indexing for finding potentially intersecting triangles.
@@ -21,6 +51,12 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
    - Option A: Use `rstar` crate
    - Option B: Implement simple bounding box hierarchy
    - Build spatial index for triangle bounding boxes
+   - When using `rstar`, prefer **bulk loading**:
+     ```rust
+     let tree = RTree::bulk_load(triangle_bboxes);
+     ```
+     instead of inserting one element at a time. This is significantly faster
+     for large meshes and produces higher-quality trees.
 
 2. **Implement triangle bounding box calculation**
    ```rust
@@ -57,11 +93,11 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
 
 ---
 
-## Task 3.2: Edge-Triangle Intersection
+## Task 3.2: Edge-Triangle Intersection & Coplanar Handling
 
-**Description**: Compute exact intersection points between edges and triangles.
+**Description**: Compute exact intersection points between edges and triangles, with specific handling for coplanar faces.
 
-**Why**: Core geometric computation for boolean operations.
+**Why**: Core geometric computation for boolean operations. Coplanar faces are the hardest problem in CSG (e.g., unioning two cubes sharing a face) and require specific logic.
 
 **Subtasks**:
 
@@ -84,11 +120,12 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
    ) -> Option<EdgeTriIntersection>
    ```
 
-2. **Handle degenerate cases**
+2. **Handle degenerate cases & Coplanar Faces**
    - Edge parallel to triangle
    - Edge endpoint on triangle
-   - Edge on triangle plane
-   - Use epsilon for tolerance
+   - **Coplanar Surface Detection**: Detect when faces are coplanar and overlapping.
+   - **Coplanar Stitching**: Instead of finding intersection points, merge the faces or define the boundary of the shared area.
+   - Use robust predicates for all orientation checks.
 
 3. **Implement batch processing**
    ```rust
@@ -106,8 +143,8 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
 
 **Acceptance Criteria**:
 - ✅ Intersection test is correct
-- ✅ Handles degenerate cases
-- ✅ Numerically stable
+- ✅ Handles degenerate cases (coplanar, vertex-on-face)
+- ✅ Numerically stable (uses robust predicates)
 - ✅ Parallel implementation works
 - ✅ Tests cover edge cases
 - ✅ Benchmarks show good performance
@@ -151,11 +188,19 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
    - Ensure manifold connectivity
    - Handle edge pairing correctly
 
-4. **Remove duplicate vertices**
+4. **Propagate original_id / face_id metadata**
+   - Each input triangle carries an `original_id` indicating its source object
+     or material/color region.
+   - For every new triangle created during boolean operations, determine which
+     input triangle(s) it came from and assign a suitable `original_id`.
+   - Preserve `original_id` across edge splits and vertex merges so that
+     `MeshGL::tri_original_id` stays meaningful for color() and materials.
+
+5. **Remove duplicate vertices**
    - Merge vertices within tolerance
    - Update triangle indices
 
-5. **Validate output mesh**
+6. **Validate output mesh**
    - Check manifoldness
    - Verify no degenerate triangles
    - Check bounding boxes
@@ -165,6 +210,8 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
 - ✅ Triangle classification is accurate
 - ✅ Output mesh is manifold
 - ✅ No duplicate vertices
+- ✅ `original_id` / face ID information is preserved on boolean results so
+  that OpenSCAD `color()` can be mapped onto the final mesh
 - ✅ Tests verify correctness
 - ✅ Handles complex cases
 
@@ -327,7 +374,32 @@ Phase 3 implements the core boolean operations that enable Constructive Solid Ge
 
 ---
 
-## Task 3.8: Operator Overloading
+## Task 3.8: Fuzz Testing for Booleans
+
+**Description**: Implement property-based fuzz testing for boolean operations.
+
+**Why**: To catch edge cases that manual tests miss.
+
+**Subtasks**:
+1. **Create fuzz target**
+   - Generate two random meshes (random scaling, rotation, translation of primitives)
+   - Perform boolean op (Union, Difference, Intersection)
+2. **Define assertions**
+   - Result must be Manifold (Euler characteristic check)
+   - Result volume should be consistent (e.g., Union volume <= sum of parts)
+3. **Run fuzz tests**
+   - Use `proptest` or `cargo-fuzz`
+
+**Acceptance Criteria**:
+- ✅ Fuzz test suite running
+- ✅ Catches known edge cases
+- ✅ No panics or non-manifold outputs
+
+**Effort**: 8-12 hours
+
+---
+
+## Task 3.9: Operator Overloading
 
 **Description**: Add operator overloads for boolean operations.
 

@@ -33,13 +33,72 @@ This document analyzes available Rust crates that could significantly simplify t
 
 | Library | Pros | Cons | Verdict |
 |---------|------|------|---------|
-| **glam** | • Simple, ergonomic API<br>• Excellent performance<br>• GLM-like (familiar)<br>• Well-maintained | • Less feature-rich than nalgebra | ⭐ **RECOMMENDED** |
+| **glam** | • Simple, ergonomic API<br>• Excellent performance<br>• GLM-like (familiar)<br>• Well-maintained<br>• **Supports f64 via DVec3, DMat4, DQuat** | • Less feature-rich than nalgebra | ⭐ **RECOMMENDED** |
 | **nalgebra** | • Most powerful<br>• Type-safe<br>• Full matrix operations | • Complex API<br>• Steeper learning curve | Alternative |
 | **cgmath** | • Game-focused | • Less active development | ❌ Not recommended |
 
 **Decision**: Use **`glam`** for Vec3, Mat4, quaternions, and basic transformations.
 
+**CRITICAL**: Must use the **f64 variants** (`DVec3`, `DMat4`, `DQuat`) throughout the codebase. CSG operations require double precision to avoid floating-point drift in chained operations.
+
+**Type Aliases**:
+```rust
+pub type Vec3 = glam::DVec3;  // f64, not f32!
+pub type Mat4 = glam::DMat4;
+pub type Quat = glam::DQuat;
+```
+
 **Impact**: ✅ ~1-2 weeks saved (already planned, confirmed good choice)
+
+---
+
+### 1.5. Robust Geometric Predicates (CRITICAL)
+
+**Current Plan**: Use epsilon comparisons for geometric tests  
+**Recommendation**: ⭐ **Add `robust` crate for exact predicates**
+
+| Library | Purpose | Verdict |
+|---------|---------|---------|------|
+| **robust** | • Exact geometric predicates<br>• Orientation tests<br>• Incircle tests<br>• Port of Shewchuk's predicates | ⭐ **RECOMMENDED** |
+
+**Why Critical**: Standard floating-point epsilon comparisons fail for edge cases in CSG:
+- Point-on-plane classification
+- Coplanarity tests
+- Edge-edge intersection detection
+
+These failures lead to:
+- ❌ Sliver triangles
+- ❌ Non-manifold outputs
+- ❌ "Nearly touching" surfaces treated as intersecting
+
+**Decision**: Use **`robust`** crate for:
+- `orient3d()` - which side of a plane is a point on?
+- `orient2d()` - which side of a line is a point on? (for 2D operations)
+- `incircle()` - point-in-circle tests for Delaunay triangulation
+
+**Usage Pattern**:
+```rust
+use robust::{orient3d, Coord3};
+
+// Instead of epsilon comparison:
+// if (point - plane_origin).dot(plane_normal).abs() < EPSILON { ... }
+
+// Use exact predicate:
+let result = orient3d(
+    Coord3 { x: plane_p1.x, y: plane_p1.y, z: plane_p1.z },
+    Coord3 { x: plane_p2.x, y: plane_p2.y, z: plane_p2.z },
+    Coord3 { x: plane_p3.x, y: plane_p3.y, z: plane_p3.z },
+    Coord3 { x: point.x, y: point.y, z: point.z },
+);
+
+match result {
+    0.0 => { /* On plane */ },
+    x if x > 0.0 => { /* Above plane */ },
+    _ => { /* Below plane */ },
+}
+```
+
+**Impact**: ✅ Critical for robustness. Prevents 90% of CSG failures. ~1 week to integrate.
 
 ---
 
@@ -283,8 +342,11 @@ This document analyzes available Rust crates that could significantly simplify t
 
 ```toml
 [dependencies]
-# Linear algebra
+# Linear algebra (MUST use f64 variants: DVec3, DMat4, DQuat)
 glam = "0.28"  # Vec3, Mat4, transformations
+
+# Robust geometric predicates (CRITICAL for CSG)
+robust = "1.1"  # Exact orientation and incircle tests
 
 # 2D operations
 clipper2 = "1.0"  # 2D booleans, offset
@@ -301,6 +363,12 @@ thiserror = "1.0"
 
 # Parallelization (optional)
 rayon = { version = "1.10", optional = true }
+
+# Recursion protection for evaluator
+stacker = "0.1"  # Grow stack / prevent stack overflows in deep recursion
+
+# Better panic messages in WASM
+console_error_panic_hook = "0.1.7"  # Report Rust panics nicely in browser console
 
 [dev-dependencies]
 criterion = "0.5"  # Benchmarking

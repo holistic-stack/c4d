@@ -71,6 +71,13 @@ pub struct MeshGL {
     
     /// Triangle vertex indices (3 per triangle, CCW)
     pub tri_verts: Vec<u32>,
+
+    /// Per-triangle source/material ID for OpenSCAD color() and materials
+    ///
+    /// Each triangle stores an ID that indicates which input object/material
+    /// it originated from. This is required to preserve `color()` information
+    /// through boolean operations (`union()`, `difference()`, `intersection()`).
+    pub tri_original_id: Vec<u32>,
 }
 ```
 
@@ -78,6 +85,7 @@ pub struct MeshGL {
 - Directly usable with OpenGL/WebGL/wgpu
 - Simple, standard mesh format
 - Easy export to STL and other formats
+- Supports OpenSCAD `color()` inheritance by tracking per-triangle source IDs
 
 ### CrossSection
 

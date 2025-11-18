@@ -47,7 +47,70 @@ mod tests {
 - ✅ Refactor
 - ✅ Repeat
 
-### 2. No Mocks (Except I/O)
+### 2. Floating-Point Precision
+
+**Principle**: All geometry calculations must use `f64`. Only the final mesh export may use `f32`.
+
+**Rationale**:
+- CSG operations accumulate floating-point errors
+- Chained boolean operations (union of 100 cubes) magnify precision errors
+- `f32` (~7 decimal digits) is insufficient for robust geometry
+- `f64` (~15 decimal digits) is the minimum for production CSG
+
+**Rules**:
+- ✅ Use `glam::DVec3`, `glam::DMat4`, `glam::DQuat` (the `f64` variants)
+- ✅ Internal coordinates, transformations, and intermediate results: `f64`
+- ✅ `MeshGL` final export for rendering: `f32` is acceptable (GPU native format)
+- ❌ Never use `glam::Vec3` (f32) for geometry calculations
+
+**Type Aliases**:
+```rust
+// In libs/manifold-rs/src/core/mod.rs or vec.rs
+pub type Vec3 = glam::DVec3;  // ALWAYS f64
+pub type Mat4 = glam::DMat4;  // ALWAYS f64
+pub type Quat = glam::DQuat;  // ALWAYS f64
+```
+
+**Good** ✅:
+```rust
+use crate::core::Vec3;  // DVec3 (f64)
+
+fn compute_centroid(points: &[Vec3]) -> Vec3 {
+    let sum: Vec3 = points.iter().sum();
+    sum / (points.len() as f64)
+}
+```
+
+**Bad** ❌:
+```rust
+use glam::Vec3;  // WRONG! This is f32
+
+fn compute_centroid(points: &[Vec3]) -> Vec3 {
+    // Will accumulate f32 precision errors
+}
+```
+
+**MeshGL Export** (acceptable `f32` usage):
+```rust
+pub struct MeshGL {
+    pub vert_properties: Vec<f32>,  // OK: final GPU format
+    pub tri_verts: Vec<u32>,
+}
+
+impl From<&Manifold> for MeshGL {
+    fn from(manifold: &Manifold) -> Self {
+        // Convert f64 vertices to f32 only at final export
+        let vert_properties: Vec<f32> = manifold.vertices()
+            .flat_map(|v: Vec3| [v.x as f32, v.y as f32, v.z as f32])
+            .collect();
+        // ...
+    }
+}
+```
+
+---
+
+### 3. No Mocks (Except I/O)
 
 **Principle**: Use real implementations, mock only external I/O
 
@@ -82,7 +145,7 @@ fn test_stl_import() {
 }
 ```
 
-### 3. Single Responsibility Principle (SRP)
+### 4. Single Responsibility Principle (SRP)
 
 **Principle**: Each module/function has ONE reason to change
 
@@ -135,7 +198,7 @@ fn process_mesh(mesh: &HalfEdgeMesh) -> (f64, BoundingBox, Vec<Vec3>) {
 }
 ```
 
-### 4. File Size Limit: 500 Lines
+### 5. File Size Limit (500 Lines)
 
 **Principle**: Keep files manageable and focused
 
@@ -156,7 +219,7 @@ primitives/
 └── polyhedron.rs   (220 lines)
 ```
 
-### 5. DRY (Don't Repeat Yourself)
+### 6. DRY (Don't Repeat Yourself)
 
 **Principle**: Avoid code duplication
 
@@ -200,7 +263,7 @@ pub fn translate(manifold: &Manifold, offset: Vec3) -> Manifold {
 }
 ```
 
-### 6. KISS (Keep It Simple, Stupid)
+### 7. KISS (Keep It Simple, Stupid)
 
 **Principle**: Favor simple, readable solutions over clever ones
 
@@ -237,7 +300,7 @@ fn calculate_average(values: &[f64]) -> f64 {
 }
 ```
 
-### 7. Explicit Error Handling (No Silent Failures)
+### 8. Explicit Error Handling (No Silent Failures)
 
 **Principle**: All errors must be explicit, no fallbacks
 
@@ -282,7 +345,7 @@ pub fn load_mesh(path: &Path) -> Result<Manifold, ManifoldError> {
 }
 ```
 
-### 8. Comprehensive Documentation
+### 9. Comprehensive Documentation
 
 **Principle**: All public items must be documented with examples
 

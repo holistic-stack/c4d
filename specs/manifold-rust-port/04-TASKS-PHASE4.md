@@ -164,11 +164,30 @@ Phase 4 implements 2D polygon operations (CrossSection) and extrusion to 3D.
 **Why**: OpenSCAD offset() for expanding/contracting 2D shapes.
 
 **Subtasks**:
+
 1. **Integrate offset library**
    - Option A: Use Clipper2 for robust offset
    - Option B: Implement simple offset algorithm
 
-2. **Implement offset with radius**
+2. **Define coordinate scaling between f64 and i64**
+   ```rust
+   // In src/core/config.rs
+   pub const CLIPPER_SCALE: f64 = 1_000_000_000.0; // ~1e9, preserves nm precision
+   
+   fn to_clipper(point: Vec2) -> (i64, i64) {
+       let x = (point.x * CLIPPER_SCALE).round() as i64;
+       let y = (point.y * CLIPPER_SCALE).round() as i64;
+       (x, y)
+   }
+   
+   fn from_clipper(x: i64, y: i64) -> Vec2 {
+       Vec2::new(x as f64 / CLIPPER_SCALE, y as f64 / CLIPPER_SCALE)
+   }
+   ```
+   - All coordinates passed to Clipper2 must be scaled using `CLIPPER_SCALE`.
+   - Converted results must be scaled back to `f64` after offsetting.
+
+3. **Implement offset with radius**
    ```rust
    impl CrossSection {
        pub fn offset(&self, radius: f64, chamfer: bool) -> CrossSection {
@@ -178,16 +197,18 @@ Phase 4 implements 2D polygon operations (CrossSection) and extrusion to 3D.
    }
    ```
 
-3. **Handle chamfer vs round**
+4. **Handle chamfer vs round**
    - Round: create smooth curves
    - Chamfer: create straight edges
 
-4. **Write tests**
+5. **Write tests**
 
 **Acceptance Criteria**:
 - ✅ Offset expands polygons correctly
 - ✅ Offset contracts polygons correctly
 - ✅ Chamfer option works
+- ✅ `CLIPPER_SCALE`-based conversion preserves small geometry without
+  introducing excessive snapping artifacts
 - ✅ Tests pass
 
 **Effort**: 12-16 hours
@@ -239,6 +260,75 @@ Phase 4 implements 2D polygon operations (CrossSection) and extrusion to 3D.
 - ✅ Tests pass
 
 **Effort**: 12-16 hours
+
+---
+
+## Task 4.3b: Mesh Sanitation (Sliver Triangle Prevention)
+
+**Description**: Post-process triangulated meshes to remove degenerate triangles and collapse short edges before boolean operations.
+
+**Why**: Triangulation algorithms (especially earcut) can produce "sliver triangles" (very long, thin triangles with near-zero area). These cause numerical instability in boolean operations, even with robust predicates, because intersection points become unreliable.
+
+**Subtasks**:
+
+1. **Implement edge collapse**
+   ```rust
+   pub fn collapse_short_edges(mesh: &mut HalfEdgeMesh, min_length: f64) {
+       // Find all edges shorter than min_length
+       // Collapse each edge by merging its vertices
+       // Update connectivity
+       // Remove resulting degenerate triangles
+   }
+   ```
+
+2. **Implement degenerate triangle removal**
+   ```rust
+   pub fn remove_degenerate_triangles(mesh: &mut HalfEdgeMesh, min_area: f64) {
+       // Compute triangle area
+       // Remove triangles with area < min_area
+       // Re-stitch holes if needed
+   }
+   ```
+
+3. **Integrate into triangulation pipeline**
+   ```rust
+   impl CrossSection {
+       pub fn triangulate(&self) -> Result<Vec<Vec3>> {
+           // Use geo/earcut to triangulate
+           let mut triangles = earcut_triangulate(&self.paths)?;
+           
+           // CRITICAL: Sanitize mesh immediately
+           collapse_short_edges(&mut triangles, config::MIN_EDGE_LENGTH);
+           remove_degenerate_triangles(&mut triangles, config::MIN_TRIANGLE_AREA);
+           
+           Ok(triangles)
+       }
+   }
+   ```
+
+4. **Add configuration constants**
+   ```rust
+   // In src/core/config.rs
+   pub const MIN_EDGE_LENGTH: f64 = 1e-8;
+   pub const MIN_TRIANGLE_AREA: f64 = 1e-12;
+   ```
+
+5. **Write tests**
+   - Test edge collapse on a mesh with micro-edges
+   - Test degenerate triangle removal
+   - Verify manifoldness is preserved
+   - Test that sanitized meshes survive boolean operations
+
+**Acceptance Criteria**:
+- ✅ Short edges (< MIN_EDGE_LENGTH) are collapsed
+- ✅ Degenerate triangles (area < MIN_TRIANGLE_AREA) are removed
+- ✅ Mesh remains manifold after sanitation
+- ✅ Boolean operations on sanitized meshes produce clean results
+- ✅ Tests demonstrate improved robustness over raw earcut output
+
+**Effort**: 8-12 hours
+
+**Note**: This is a **critical** step for production quality. Consider using CDT (Constrained Delaunay Triangulation) from `geo` instead of earcut if quality issues persist, as CDT produces better-quality triangles.
 
 ---
 

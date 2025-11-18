@@ -9,6 +9,50 @@ Phase 2 implements all geometric primitive constructors (cube, sphere, cylinder)
 
 ---
 
+## Task 2.0: OpenSCAD Evaluator Design (Geometry IR)
+
+**Description**: Design the interpreter that converts OpenSCAD AST to Manifold operations.
+
+**Why**: Moved from Phase 5. Defining the Geometry IR early acts as the contract between the Language layer and the Geometry layer. This ensures `manifold-rs` builds exactly what `openscad-eval` needs to output.
+
+**Subtasks**:
+
+1. **Define Value type**
+   ```rust
+   // In libs/openscad-eval/src/value.rs
+   #[derive(Clone, Debug)]
+   pub enum Value {
+       Undef,
+       Bool(bool),
+       Number(f64),
+       String(String),
+       List(Vec<Value>),
+       // Geometry values are REFERENCES into the fully-evaluated geometry IR.
+       Geometry(GeometryId),        // 3D geometry handle
+       CrossSection(CrossSectionId),// 2D geometry handle
+   }
+   ```
+
+2. **Define Geometry IR**
+   ```rust
+   // In libs/openscad-eval/src/geometry_ir.rs
+   pub enum GeometryNode {
+       Primitive { kind: PrimitiveKind, params: PrimitiveParams },
+       Transform { kind: TransformKind, params: TransformParams, child: GeometryId },
+       Boolean { kind: BooleanKind, children: Vec<GeometryId> },
+       Special { kind: SpecialKind, params: SpecialParams, children: Vec<GeometryId> },
+   }
+   ```
+
+**Acceptance Criteria**:
+- ✅ GeometryIR enum defined
+- ✅ Value type defined
+- ✅ Contract between Evaluator and Manifold established
+
+**Effort**: 4-6 hours
+
+---
+
 ## Task 2.1: Cube Primitive
 
 **Description**: Generate cube/rectangular box meshes.
