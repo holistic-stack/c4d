@@ -1,7 +1,8 @@
-# Rust OpenSCAD Pipeline: Comprehensive Master Plan
+Create Rust OpenSCAD Pipeline: Comprehensive Master Plan in overview-plan.md, tasks.md files in specs/pipeline/ folder;
 
 ## 1. Project Goal
 Create a complete, robust, and performant **OpenSCAD-to-3D-Mesh pipeline** in Rust, targeting WebAssembly for a browser-based playground. The system must support real-time compilation, zero-copy data transfer, and source mapping.
+breakdown the plan in to max smaller steps/tasks/subtasks the steps with all necessary information for the developer needs without need external resources;
 
 ## 2. Core Philosophy (Strict Adherence Required)
 *   **Vertical Slices**: Implement one feature at a time through the *entire* pipeline (UI -> WASM -> Parser -> AST -> Evaluator -> Manifold -> Mesh -> UI).
