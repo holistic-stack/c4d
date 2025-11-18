@@ -222,14 +222,14 @@ This document analyzes available Rust crates that could significantly simplify t
 - MVP: STL only via `stl_io`
 - Future: Add OBJ via `tobj`
 
-**Impact**: ✅ ~1 week saved (STL I/O is straightforward with library)
+**Impact**: ~1 week saved (STL I/O is straightforward with library)
 
 ---
 
 ### 7. Mesh Data Structures (LOW IMPACT)
 
 **Current Plan**: Custom HalfEdgeMesh  
-**Recommendation**: ⚠️ **Keep custom implementation**
+**Recommendation**: **Keep custom implementation**
 
 #### Available Libraries
 

@@ -2,7 +2,9 @@
 
 ## Project Summary
 
-**Goal**: Create a complete OpenSCAD-to-3D-mesh pipeline in Rust by porting the Manifold geometry kernel and integrating it with the existing OpenSCAD parser.
+**Goal**: Create a complete OpenSCAD-to-3D-mesh pipeline in Rust by porting the Manifold geometry
+kernel, integrating it with the existing OpenSCAD parser and AST/evaluator crates, and exposing it
+via a WebAssembly wrapper and a Svelte/Three.js web playground.
 
 **Total Estimated Duration**: 12-18 weeks for MVP
 
@@ -129,11 +131,13 @@
 
 **Weeks 15-16: Phase 5 - OpenSCAD Integration (Part 1)**
 
-- [ ] Design evaluator architecture
+- [ ] Design `libs/openscad-eval` architecture (Value, geometry IR, EvalContext)
+- [ ] Confirm `libs/openscad-parser` and `libs/openscad-ast` public APIs (CST → AST) are adequate
 - [ ] Implement expression evaluator
 - [ ] Implement primitive evaluation
 - [ ] Implement transformation evaluation
-- [ ] Basic OpenSCAD scripts working
+- [ ] Wire evaluator output into `libs/manifold-rs` to produce `Manifold`/`MeshGL`
+- [ ] Basic OpenSCAD scripts working via a Rust API
 
 **Deliverable**: Basic OpenSCAD evaluation working
 
@@ -143,11 +147,13 @@
 
 **Weeks 17-18: Phase 5 - OpenSCAD Integration (Part 2)**
 
-- [ ] Implement boolean statement evaluation
-- [ ] Implement control flow (for, if/else)
-- [ ] Implement module definitions
-- [ ] Implement function definitions
-- [ ] Complete OpenSCAD coverage
+- [ ] Implement boolean statement evaluation (union, difference, intersection, hull, minkowski)
+- [ ] Implement control flow (for, intersection_for, if/else)
+- [ ] Implement module and function definitions (including children(), let/assign, include/use)
+- [ ] Implement `libs/manifold-rs` OpenSCAD helper (e.g. `parse_and_evaluate_openscad`)
+- [ ] Implement `libs/wasm` wrapper exposing `parse_openscad_to_mesh` to JavaScript
+- [ ] Create initial Svelte + Three.js playground wired to the WASM API with a full-window viewport
+- [ ] Complete OpenSCAD coverage for the evaluator
 
 **Deliverable**: Full OpenSCAD language support
 
@@ -160,7 +166,8 @@
 - [ ] Implement STL export
 - [ ] Implement 3MF export (optional)
 - [ ] Create example gallery
-- [ ] End-to-end integration tests
+- [ ] End-to-end integration tests from OpenSCAD source to MeshGL, including WASM and playground
+- [ ] Polish the Svelte + Three.js playground (camera controls, resize behavior, full-window viewport)
 
 **Week 20: Documentation and Release**
 

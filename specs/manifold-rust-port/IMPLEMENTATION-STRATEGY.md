@@ -296,9 +296,12 @@ harness = false
 
 **With Libraries**:
 - Use `stl_io` for STL import/export ✅
-- Implement OpenSCAD evaluator (custom)
-- Integration tests
-- Documentation
+- Implement `libs/openscad-eval` (OpenSCAD evaluator) on top of `libs/openscad-ast`
+- Add an OpenSCAD integration helper in `libs/manifold-rs` that goes from source → MeshGL
+- Implement `libs/wasm` using `wasm-bindgen` to expose the parse-and-evaluate API to JavaScript
+- Wire up the Svelte + Three.js playground to the WASM API with a full-window 3D viewport
+- Integration tests across Rust, WASM, and web layers
+- Documentation (including web usage examples)
 
 **Time Saved**: ~1 week
 

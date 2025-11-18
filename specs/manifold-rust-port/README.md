@@ -202,9 +202,16 @@ Constructive Solid Geometry operations:
 - **Intersection (∩)**: Keep only overlapping volume
 
 ### OpenSCAD Integration
-The evaluator converts OpenSCAD AST to Manifold operations:
+The evaluator and integration crates convert OpenSCAD source all the way to file output and a web
+viewer:
 ```
-OpenSCAD source → Tree-sitter → CST → AST → Evaluator → Manifold → MeshGL → STL
+OpenSCAD source
+  → libs/openscad-parser   (Tree-sitter CST)
+  → libs/openscad-ast      (typed AST)
+  → libs/openscad-eval     (evaluated geometry IR, no vars/loops)
+  → libs/manifold-rs       (Manifold + MeshGL)
+  → file export            (STL/3MF/glTF) and libs/wasm (WebAssembly)
+  → playground/ (Svelte + Three.js, full-window viewport)
 ```
 
 ## Dependencies

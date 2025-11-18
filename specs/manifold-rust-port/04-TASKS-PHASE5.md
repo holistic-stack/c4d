@@ -687,11 +687,83 @@ IR / command list** with **no remaining unevaluated expressions or control flow*
 
 ---
 
+## Task 5.9: WebAssembly Integration (libs/wasm)
+
+**Description**: Expose a high-level "parse OpenSCAD source to evaluated manifold geometry" API to
+JavaScript via WebAssembly.
+
+**Why**: Enables using the Rust pipeline directly in the browser and in the Svelte playground.
+
+**Subtasks**:
+
+1. **Design wasm-facing API**
+   - Choose a single entry point, e.g. `parse_openscad_to_mesh(source: &str) -> JsValue`.
+   - Decide on a MeshGL-compatible JS representation (positions/index arrays).
+
+2. **Implement wasm-bindgen wrapper**
+   - Call `manifold_rs::parse_and_evaluate_openscad(source)` from `libs/wasm`.
+   - Map `MeshGL` into a JS object/typed arrays.
+   - Ensure all errors are mapped to JS exceptions with clear messages (no silent failures).
+
+3. **Add wasm-specific tests**
+   - Use `wasm-bindgen-test` or equivalent to exercise the exported function in a browser-like
+     environment.
+   - Verify triangle/vertex counts for simple models (cube, sphere, cylinder).
+
+**Acceptance Criteria**:
+- ✅ `libs/wasm` builds and exports a stable `parse_openscad_to_mesh`-style API
+- ✅ Internally uses `libs/manifold-rs` OpenSCAD helper, which itself uses `openscad-ast` and
+  `openscad-eval`
+- ✅ Errors are explicit and visible in JavaScript (no silent failures)
+- ✅ Basic wasm tests pass in CI
+
+**Effort**: 8-12 hours
+
+---
+
+## Task 5.10: Web Playground (Svelte + Three.js)
+
+**Description**: Implement a browser playground that uses the WASM API to render OpenSCAD models in a
+full-window Three.js viewport.
+
+**Why**: Provides an interactive demo and validation of the entire pipeline in a real-world UI.
+
+**Subtasks**:
+
+1. **Wire Svelte to WASM**
+   - Load the `libs/wasm` bundle in the Svelte app.
+   - Call `parse_openscad_to_mesh(source)` whenever the user edits OpenSCAD code.
+
+2. **Render with Three.js**
+   - Convert MeshGL data from the WASM API into Three.js geometry (positions + indices).
+   - Add basic lighting, camera, and controls.
+
+3. **Full-window viewport layout**
+   - Ensure the Three.js canvas fills **100% of the browser window** (width and height).
+   - Handle window resize events so the viewport always matches the window size.
+
+4. **Smoke tests / manual checklist**
+   - Load simple models (cube, sphere, difference) and confirm they render correctly.
+   - Verify camera controls and viewport resizing work.
+
+**Acceptance Criteria**:
+- ✅ Playground uses the WASM API to parse and evaluate OpenSCAD source into a manifold mesh
+- ✅ Three.js renders the mesh in a viewport that fills 100% of the browser window
+- ✅ Basic interactions (camera, resize) work without errors
+- ✅ Documented usage in README or dedicated playground docs
+
+**Effort**: 12-16 hours
+
+---
+
 ## Phase 5 Complete When:
 
-- [ ] Evaluator fully implemented
-- [ ] All OpenSCAD operations supported
-- [ ] File I/O works
-- [ ] Integration tests pass
-- [ ] Documentation complete
+- [ ] Evaluator fully implemented (libs/openscad-eval)
+- [ ] All OpenSCAD operations supported and evaluated into geometry IR (no remaining vars/loops)
+- [ ] File I/O works (STL import/export and special operations)
+- [ ] Manifold OpenSCAD integration helper in `libs/manifold-rs` working
+- [ ] WebAssembly wrapper crate (`libs/wasm`) exposes parse-and-evaluate API
+- [ ] Svelte + Three.js playground renders evaluated meshes in a full-window viewport
+- [ ] Integration tests pass across Rust, WASM, and web layers
+- [ ] Documentation complete (including web usage)
 - [ ] Ready for production use

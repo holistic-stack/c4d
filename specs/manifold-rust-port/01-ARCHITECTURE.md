@@ -317,6 +317,84 @@ All modules follow the same standards as `libs/manifold-rs`: one responsibility 
 folder, `mod.rs + tests.rs`, and files kept under 500 lines. See
 `08-CODING-STANDARDS.md` and `05-TESTING-STRATEGY.md` for details.
 
+## OpenSCAD→Geometry→Web Pipeline and Public APIs
+
+This project defines a clear, layered pipeline from OpenSCAD source code to manifold geometry and
+eventually to a WebAssembly-powered web viewer.
+
+### Crate Responsibilities
+
+- **libs/openscad-parser**
+  - Tree-sitter wrapper that exposes a **CST parsing API**.
+  - Example shape:
+    ```rust
+    pub fn parse_to_cst(source: &str) -> Result<CstRoot>;
+    ```
+
+- **libs/openscad-ast**
+  - Builds a **typed AST** from the CST produced by `libs/openscad-parser`.
+  - Responsible for OpenSCAD language structure (expressions, statements, modules, functions, etc.).
+  - Public API (conceptual):
+    ```rust
+    pub fn parse_source(source: &str) -> Result<AstRoot> {
+        let cst = openscad_parser::parse_to_cst(source)?;
+        Ok(from_cst(&cst)?)
+    }
+
+    pub fn from_cst(cst: &CstRoot) -> Result<AstRoot>;
+    ```
+
+- **libs/openscad-eval**
+  - Evaluates the typed AST, resolving all OpenSCAD semantics into a **fully evaluated geometry IR**
+    (no variables, loops, or conditionals remain).
+  - Public API (conceptual):
+    ```rust
+    pub fn evaluate_ast(ast: &AstRoot) -> Result<GeometryIr>;
+
+    pub fn evaluate_source(source: &str) -> Result<GeometryIr> {
+        let ast = openscad_ast::parse_source(source)?;
+        evaluate_ast(&ast)
+    }
+    ```
+
+- **libs/manifold-rs**
+  - Core manifold kernel (primitives, booleans, transforms, 2D operations, extrusion, MeshGL).
+  - Can be used directly for geometry construction without any OpenSCAD involvement.
+  - Additionally, exposes an **OpenSCAD integration helper** (e.g. feature-gated `openscad` module)
+    that wires together `openscad-ast` and `openscad-eval`:
+    ```rust
+    pub fn parse_and_evaluate_openscad(source: &str) -> Result<MeshGL> {
+        let ast = openscad_ast::parse_source(source)?;
+        let ir  = openscad_eval::evaluate_ast(&ast)?;
+        let manifold = manifold_from_ir(&ir)?;
+        Ok(manifold.to_meshgl())
+    }
+    ```
+    where `manifold_from_ir` walks the geometry IR and invokes primitives, transforms and boolean
+    operations defined in `libs/manifold-rs`.
+
+- **libs/wasm**
+  - WebAssembly glue crate that uses `wasm-bindgen` to expose the high-level
+    `parse_and_evaluate_openscad`-style API from `libs/manifold-rs` to JavaScript:
+    ```rust
+    #[wasm_bindgen]
+    pub fn parse_openscad_to_mesh(source: &str) -> JsValue {
+        let mesh = manifold_rs::parse_and_evaluate_openscad(source)
+            .map_err(to_js_error)?;
+        mesh_to_js(mesh)
+    }
+    ```
+  - This crate is the only place that knows about `wasm-bindgen` and JS types.
+
+- **playground/** (Svelte + Three.js)
+  - Frontend application that loads the `libs/wasm` WebAssembly bundle.
+  - Calls the exported `parse_openscad_to_mesh` API whenever the user edits OpenSCAD code.
+  - Renders the resulting mesh using Three.js in a 3D viewport that fills **100% of the browser
+    window** (both width and height), ensuring a full-window modeling experience.
+
+This separation keeps the core manifold kernel decoupled from OpenSCAD and web concerns, while still
+providing a simple end-to-end API for parsing and visualizing OpenSCAD models.
+
 ## Algorithm Design
 
 ### Boolean Operations

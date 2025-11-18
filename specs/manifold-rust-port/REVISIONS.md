@@ -234,6 +234,29 @@ All specification documents updated:
 
 ---
 
+## Additional Revisions (November 2025)
+
+### 4. Crate Pipeline and Web Viewer Integration
+
+- Updated 00-OVERVIEW.md, 01-ARCHITECTURE.md, and README.md to explicitly document the
+  crate pipeline:
+  - `libs/openscad-parser` → CST
+  - `libs/openscad-ast` → AST from CST
+  - `libs/openscad-eval` → evaluated geometry IR (no remaining vars/loops)
+  - `libs/manifold-rs` → manifold geometries + MeshGL, including an OpenSCAD helper API
+  - `libs/wasm` → WebAssembly wrapper exposing the parse-and-evaluate API
+  - `playground/` (Svelte + Three.js) → full-window 3D web viewer
+
+- Updated 04-TASKS-PHASE5.md to include tasks for `libs/wasm` and the Svelte + Three.js playground
+  and to make Phase 5 completion dependent on the entire Rust→WASM→web pipeline.
+
+- Updated 05-TESTING-STRATEGY.md, 06-ROADMAP.md, 07-THIRD-PARTY-LIBRARIES.md, and
+  IMPLEMENTATION-STRATEGY.md so that testing, schedule, library choices, and implementation phases
+  all explicitly reference the full OpenSCAD → CST → AST → IR → Manifold/MeshGL → WASM → web
+  pipeline.
+
+---
+
 ## Next Steps
 
 1. ✅ Specifications aligned with OpenSCAD

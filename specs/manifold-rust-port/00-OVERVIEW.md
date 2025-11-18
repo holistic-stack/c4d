@@ -71,6 +71,64 @@ This project aims to create a comprehensive Rust port of the Manifold geometric 
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Crate Responsibilities and Public APIs
+
+At a high level, the pipeline is:
+
+```text
+OpenSCAD source code (string)
+  → libs/openscad-parser    (Tree-sitter: Concrete Syntax Tree - CST)
+  → libs/openscad-ast       (build typed AST from CST)
+  → libs/openscad-eval      (evaluate AST → fully resolved geometry IR)
+  → libs/manifold-rs        (convert geometry IR → Manifold + MeshGL)
+  → file export             (STL/3MF/glTF) and WebAssembly (libs/wasm)
+  → playground (Svelte + Three.js, full-window viewport)
+```
+
+- **libs/openscad-parser**
+  - Low-level Tree-sitter wrapper.
+  - Public API: parse OpenSCAD source text into a **Concrete Syntax Tree (CST)**.
+
+- **libs/openscad-ast**
+  - Builds a **typed AST** from the parser CST.
+  - Public API:
+    - `parse_source(source: &str) -> AstRoot` (internally uses `libs/openscad-parser` CST API).
+    - `from_cst(cst_root: CstRoot) -> AstRoot` for advanced use cases.
+
+- **libs/openscad-eval**
+  - Evaluates the typed AST and resolves **all** OpenSCAD semantics (variables, scopes, functions,
+    modules, `for`/`intersection_for`, `if/else`, `children`, `let/assign`, ranges, list
+    comprehensions, etc.).
+  - Produces a **geometry IR / command list** with **no remaining control flow or unevaluated
+    expressions**.
+  - Public API:
+    - `evaluate_ast(ast: &AstRoot) -> GeometryIr`.
+    - Convenience: `evaluate_source(source: &str) -> GeometryIr` (internally uses `libs/openscad-ast`).
+
+- **libs/manifold-rs**
+  - Core geometric kernel: primitives, transformations, boolean operations, 2D cross sections,
+    extrusion, and MeshGL.
+  - Primary usage is independent of OpenSCAD (call primitives and operations directly).
+  - Additionally, provides an **OpenSCAD integration helper API** (feature-gated module) that:
+    - Uses `libs/openscad-ast` to parse OpenSCAD source to AST.
+    - Uses `libs/openscad-eval` to evaluate AST to geometry IR.
+    - Converts geometry IR to `Manifold`/`MeshGL`.
+    - Example shape of this helper API: `fn parse_and_evaluate_openscad(source: &str) -> Result<MeshGL>`.
+
+- **libs/wasm**
+  - WebAssembly wrapper around the `libs/manifold-rs` integration helper API.
+  - Uses `wasm-bindgen` to expose a function such as
+    `parse_openscad_to_mesh(source: &str) -> JsValue` that returns a MeshGL-compatible structure
+    to JavaScript.
+
+- **playground/** (Svelte + Three.js)
+  - Browser playground that consumes the `libs/wasm` WebAssembly module.
+  - Calls the exported `parse_openscad_to_mesh`-style API to obtain the evaluated mesh for a given
+    OpenSCAD source string.
+  - Renders the mesh with Three.js in a **viewport that fills 100% of the browser window** (both
+    width and height), so the user sees a full-window 3D view.
+
+
 ## Technology Stack
 
 ### Core Technologies

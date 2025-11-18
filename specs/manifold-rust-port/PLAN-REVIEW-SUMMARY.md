@@ -101,10 +101,10 @@ src/primitives/
 **File**: README.md
 
 **Changes**:
-- ✅ Added coding standards to document index
-- ✅ Added to "Recent Updates" section
-- ✅ Required reading in quick start guide
-- ✅ Proper ordering: Strategy → Standards → Overview
+- Added coding standards to document index
+- Added to "Recent Updates" section
+- Required reading in quick start guide
+- Proper ordering: Strategy → Standards → Overview
 
 **Reading Order**:
 1. IMPLEMENTATION-STRATEGY.md (overview)
@@ -114,10 +114,24 @@ src/primitives/
 5. 01-ARCHITECTURE.md (technical details)
 6. Phase documents (implementation)
 
+### 5. Documented OpenSCAD→WASM→Web Pipeline
+
+**Files**: 00-OVERVIEW.md, 01-ARCHITECTURE.md, README.md
+
+- Clarified crate responsibilities:
+  - `libs/openscad-parser` → CST
+  - `libs/openscad-ast` → AST from CST
+  - `libs/openscad-eval` → evaluated geometry IR
+  - `libs/manifold-rs` → Manifold + MeshGL (and OpenSCAD helper API)
+  - `libs/wasm` → WebAssembly wrapper around `manifold-rs`
+  - `playground/` (Svelte + Three.js) → browser-based viewer
+- Ensured the pipeline is documented consistently from OpenSCAD source to full-window web viewer.
+
 ---
 
 ## Alignment with Principles
 
+### Test-Driven Development (TDD)
 ### ✅ Test-Driven Development (TDD)
 
 **Applied**:

@@ -288,71 +288,76 @@ criterion_main!(benches);
 
 ### 6. End-to-End Tests
 
-**Location**: `tests/e2e/*.rs`
+**Location**:
+- Core Rust pipeline: `tests/e2e/*.rs` in the relevant crates
+- WASM binding: `libs/wasm/tests/` or `wasm-bindgen-test` suites
+- Web playground: manual / visual tests plus optional automated checks
 
-**Purpose**: Test complete OpenSCAD → Manifold → Output pipeline.
+**Purpose**: Test the complete OpenSCAD → CST → AST → geometry IR → Manifold/MeshGL → WASM → web viewer
+pipeline.
 
-**Examples**:
+#### 6.1 Core Rust Pipeline (openscad-parser → openscad-ast → openscad-eval → manifold-rs)
+
 ```rust
-// tests/e2e/openscad_examples.rs
-use openscad_ast::parse;
-use openscad_eval::Evaluator;
+// tests/e2e/openscad_to_mesh.rs
+use openscad_parser::parse_to_cst;
+use openscad_ast::from_cst;
+use openscad_eval::evaluate_ast;
+use manifold_rs::{manifold_from_ir, MeshGL};
 
 #[test]
-fn test_simple_cube_openscad() {
+fn test_simple_cube_pipeline() {
     let source = "cube([2, 3, 4]);";
-    let ast = parse(source).unwrap();
-    
-    let mut eval = Evaluator::new();
-    let geometries = eval.evaluate(&ast).unwrap();
-    
-    assert_eq!(geometries.len(), 1);
-    assert_eq!(geometries[0].volume(), 24.0);
-}
 
-#[test]
-fn test_difference_with_cylinder() {
-    let source = r#"
-        difference() {
-            cube([10, 10, 10], center=true);
-            rotate([0, 90, 0])
-                cylinder(h=12, r=3, center=true);
-        }
-    "#;
-    
-    let ast = parse(source).unwrap();
-    let mut eval = Evaluator::new();
-    let geometries = eval.evaluate(&ast).unwrap();
-    
-    assert_eq!(geometries.len(), 1);
-    assert!(geometries[0].is_manifold());
-    
-    // Cube volume is 1000, cylinder approximately removes π*3²*12 ≈ 339.3
-    let expected_volume = 1000.0 - (std::f64::consts::PI * 9.0 * 12.0);
-    assert!((geometries[0].volume() - expected_volume).abs() < 10.0);
-}
+    let cst = parse_to_cst(source).unwrap();
+    let ast = from_cst(&cst).unwrap();
+    let ir  = evaluate_ast(&ast).unwrap();
+    let manifold = manifold_from_ir(&ir).unwrap();
+    let mesh: MeshGL = manifold.to_meshgl();
 
-#[test]
-fn test_for_loop_rotation() {
-    let source = r#"
-        for (i = [0:5]) {
-            rotate([0, 0, i * 60])
-                translate([5, 0, 0])
-                    cube([1, 1, 1]);
-        }
-    "#;
-    
-    let ast = parse(source).unwrap();
-    let mut eval = Evaluator::new();
-    let geometries = eval.evaluate(&ast).unwrap();
-    
-    assert_eq!(geometries.len(), 6);
-    for geom in &geometries {
-        assert!(geom.is_manifold());
-        assert_eq!(geom.volume(), 1.0);
-    }
+    assert!(manifold.is_manifold());
+    assert_eq!(manifold.volume(), 24.0);
+    assert_eq!(mesh.tri_verts.len(), 12 * 3);
 }
 ```
+
+Alternatively, tests can use a high-level helper in `libs/manifold-rs`:
+
+```rust
+#[test]
+fn test_simple_cube_helper() {
+    let mesh = manifold_rs::parse_and_evaluate_openscad("cube([2, 3, 4]);").unwrap();
+    // Assert on vertex/triangle counts, volume, etc.
+}
+```
+
+#### 6.2 WASM API (libs/wasm)
+
+```rust
+// libs/wasm/tests/web_api.rs (conceptual)
+use wasm_bindgen_test::*;
+
+wasm_bindgen_test_configure!(run_in_browser);
+
+#[wasm_bindgen_test]
+fn test_parse_openscad_to_mesh_js_api() {
+    // Call the exported WASM function and verify it returns a mesh object.
+    let mesh_js = crate::parse_openscad_to_mesh("cube([1,1,1]);");
+
+    // Inspect fields via JS bindings / serde and ensure triangle/vertex counts are correct.
+}
+```
+
+#### 6.3 Web Playground (Svelte + Three.js)
+
+- Load the `libs/wasm` bundle and call `parse_openscad_to_mesh` from the Svelte app when the user
+  edits OpenSCAD code.
+- Render the resulting mesh with Three.js in a viewport that fills **100% of the browser window**
+  (both width and height).
+- Use manual and (optional) visual regression tests to ensure:
+  - The scene renders without errors.
+  - Camera controls work as expected.
+  - The viewport resizes correctly with the browser window.
 
 ---
 
