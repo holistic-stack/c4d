@@ -129,17 +129,17 @@ Ensure the existing Rust `libs/openscad-parser` (Tree-sitter bindings) is wired 
 ### Task 1.5 – Enforce Pipeline Boundaries ✅ COMPLETED
 
 **Goal**
-Establish strict crate boundaries and public interfaces: openscad-parser (bindings) → openscad-ast → openscad-eval → manifold-rs → wasm.
+Establish strict crate boundaries and public interfaces: openscad-parser (bindings) → openscad-ast → openscad-eval → manifold-rs (geometry + mesh handlers/export) → wasm (interface only).
 
 **Completed Work**:
 - ✅ Introduced shared `pipeline-types` for `Diagnostic`/`Span`
 - ✅ `openscad-ast` encapsulates CST parsing via `openscad-parser` bindings and exposes `build_ast_from_source()` / `build_ast()` (CST parsing not exposed)
 - ✅ Added `EvaluationContext` and `evaluate_ast` in `openscad-eval`
-- ✅ Added `to_mesh` API in `manifold-rs`; WASM orchestration-only `compile_and_render`
+- ✅ Added `to_mesh` API in `manifold-rs`; mesh handlers and export remain in `manifold-rs`; WASM orchestration-only `compile_and_render`
 
 **Acceptance Criteria** – All met
 - ✅ libs/wasm contains no mesh generation logic
-- ✅ Orchestration path calls `manifold-rs` public interfaces only; no direct parser/AST usage in WASM
+- ✅ Orchestration path calls `manifold-rs` public interfaces only; no direct parser/AST usage in WASM; no mesh logic in WASM
 - ✅ Unit tests pass for boundaries; end-to-end compile works
 
 **Steps**

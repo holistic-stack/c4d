@@ -117,14 +117,15 @@ High-level pipeline:
    - Exposes a **safe, high-level Rust API** (e.g. `fn union(&self, other: &Self) -> Result<Self, Error>`), hiding raw half-edge details.
    - Ports **only** the features needed for the OpenSCAD vertical slices; new OpenSCAD features missing in C++ are implemented directly in Rust.
 
-6. **Mesh Export**  
-   - Converts internal `Manifold` representation into `GlMeshBuffers` (flat `f32` GPU buffers).  
-   - Internal math uses `f64`; export to GPU-friendly `f32` only at this boundary.
+6. **Mesh Export (Kernel)**  
+   - Performed exclusively in `libs/manifold-rs`.  
+   - Converts internal `Manifold` representation into mesh buffers suitable for zero-copy WASM interfaces (e.g. `GlMeshBuffers`).  
+   - Internal math uses `f64`; export to GPU-friendly `f32` only at the kernel boundary.
 
 7. **WASM – `libs/wasm`**  
      - Thin interface-only orchestration between crates.  
-     - Exposes `compile_and_render(source: &str)`; no parse-only API and no mesh logic inside WASM.  
-     - Returns zero-copy buffers via handles; frees memory after upload.  
+     - Exposes kernel functionality from `libs/manifold-rs` (e.g. `compile_and_render(source: &str)`); no mesh logic or handlers in WASM.  
+     - Serializes rich diagnostics from kernel error chains.  
      - Initializes panic hooks in debug builds.
 
 8. **Playground**  
@@ -189,7 +190,7 @@ Key rules:
 - `openscad-ast` depends on `openscad-parser` to build typed AST nodes.
 - `openscad-eval` consumes `openscad-ast` and produces an **Evaluated AST** (Geometry IR). It does **not** depend on `manifold-rs`.
       - `manifold-rs` consumes the Evaluated AST from `openscad-eval` and generates the geometry.
-      - `wasm` orchestrates via `manifold_rs` public APIs only (`process_openscad`, `parse_only`), and does not import parser/AST crates directly.
+      - `wasm` orchestrates via `manifold_rs` public APIs only (e.g. `compile`, `process_openscad`), and does not implement mesh logic or import parser/AST crates directly.
 
 ### 3.4 Library Responsibilities & Relationships
 
