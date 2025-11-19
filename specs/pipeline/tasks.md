@@ -99,16 +99,16 @@ Set up the Playground with a Web Worker and Three.js scene, ready to call WASM.
 - ✅ WASM loader and integration
 - ✅ Geometry demo component  
 - ✅ Development server running
+- ✅ Web Worker implementation for pipeline (messaging, error handling)
+- ✅ TypeScript wrapper for WASM (Glue Code) finalized
 
 **Remaining Steps**:
-- 🔄 Complete Web Worker implementation for pipeline
-- 🔄 Finalize TypeScript wrapper for WASM (Glue Code)
 - 🔄 Implement Three.js Scene Manager with full SRP
-- 🔄 Add proper error handling and diagnostics
+- ⚠️ Fix WASM build issue (missing stdio.h/stdlib.h for tree-sitter on Windows)
 
 **Acceptance Criteria** - Partially met:
 - ✅ `pnpm dev` in `playground/` starts without errors
-- 🔄 Pipeline needs completion for full WASM integration
+- 🔄 Pipeline needs completion for full WASM integration (WASM build failing)
 - ✅ TypeScript strict mode enabled with no `any` types
 
 ---

@@ -397,7 +397,6 @@ name = "openscad-ast"
 version = "0.1.0"
 dependencies = [
  "pipeline-types",
- "serde",
  "thiserror",
  "tree-sitter",
  "tree-sitter-openscad",
@@ -421,8 +420,9 @@ name = "openscad-wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "js-sys",
  "manifold-rs",
- "pipeline-types",
+ "openscad-eval",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

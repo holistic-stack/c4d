@@ -16,8 +16,8 @@ use pipeline_types::{Diagnostic, TraceDiagnostic, Stage, Span};
 use openscad_ast::{AstError, ParseError};
 
 /// Processes OpenSCAD source code and returns a triangulated mesh as a flat vector of coordinates.
-pub fn process_openscad(source: &str) -> Result<Vec<f64>, String> {
-    let evaluated_geometry = evaluate(source).map_err(|diags| format!("Parse/Eval failed: {:?}", diags))?;
+pub fn process_openscad(source: &str) -> Result<Vec<f64>, Vec<Diagnostic>> {
+    let evaluated_geometry = evaluate(source)?;
 
     match evaluated_geometry {
         EvaluatedGeometry::Cube(cube_params) => {
@@ -40,7 +40,12 @@ pub fn process_openscad(source: &str) -> Result<Vec<f64>, String> {
             
             match cube.to_mesh() {
                 Ok(mesh) => Ok(mesh.triangulate()),
-                Err(e) => Err(format!("Error creating cube mesh: {:?}", e)),
+                Err(e) => Err(vec![Diagnostic {
+                    severity: pipeline_types::Severity::Error,
+                    message: format!("Error creating cube mesh: {:?}", e),
+                    span: pipeline_types::Span { start: 0, end: source.len() },
+                    hint: None,
+                }]),
             }
         }
     }
