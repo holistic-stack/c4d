@@ -20,11 +20,11 @@ export function loadWasm(): Promise<WasmModule> {
 }
 
 export async function helloFromWasm(): Promise<string> {
-	const wasm = await loadWasm();
+  const wasm = await loadWasm();
 
-	if (typeof wasm.hello_world === 'function') {
-		return wasm.hello_world();
-	}
+  if (typeof wasm.hello_world === 'function') {
+    return wasm.hello_world();
+  }
 
-	throw new Error('hello_world export not found');
+  throw new Error('hello_world export not found');
 }

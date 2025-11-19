@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-This document confirms that `libs/manifold-rs` will be a **direct port** of the local C++ Manifold algorithms using an index-based half-edge data structure, not a thin wrapper around external kernels like `manifold3d` or `csgrs`.
+This document confirms that `libs/manifold-rs` will be a **direct port** of the local C++ Manifold algorithms using an index-based half-edge data structure, not a thin wrapper around external kernels like `manifold3d` or `csgrs`. `libs/manifold-rs` is the sole owner of geometry construction and mesh export. `libs/wasm` provides only an interface and orchestration, never geometry or parsing logic.
 
 ## Rationale
 
@@ -129,6 +129,13 @@ The following external libraries may be consulted **only as references**:
 - **WASM Bundle**: <2MB compressed size
 
 ### Conclusion
+
+#### Module Boundaries Enforcement
+- Parsing runtime entry: `openscad-parser` (Tree-sitter + Rust binding) → CST (encapsulated inside `openscad-ast`)
+- AST build: `openscad-ast` → AST (CST parsing is internal)
+- Evaluation: `openscad-eval` → Evaluated AST / IR
+- Kernel: `manifold-rs` → Geometry + Mesh export
+- WASM: `libs/wasm` → Interface-only orchestration calling `manifold-rs`
 
 This direct port approach provides:
 - ✅ Complete algorithmic control

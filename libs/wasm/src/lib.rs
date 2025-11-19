@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
-use manifold_rs::process_openscad;
+use manifold_rs::{process_openscad, compile as mr_compile, KernelError, error_to_trace};
+use pipeline_types::{TraceDiagnostic, Stage, Span};
 
 #[wasm_bindgen]
 pub fn hello_world() -> String {
@@ -10,6 +11,18 @@ pub fn hello_world() -> String {
 pub fn compile_openscad(source: &str) -> Result<Vec<f64>, JsValue> {
     process_openscad(source).map_err(|e| JsValue::from_str(&e))
 }
+
+// No parse-only public API exposed from WASM; diagnostics are returned via compile failures
+
+#[wasm_bindgen]
+pub fn compile_and_render(source: &str) -> Result<Vec<f64>, JsValue> {
+    match mr_compile(source) {
+        Ok(bufs) => Ok(bufs),
+        Err(err) => Err(JsValue::from_str(&serde_json::to_string(&error_to_trace(&err, source)).unwrap_or_default())),
+    }
+}
+
+// Error-to-trace conversion implemented in manifold-rs to preserve strict boundaries
 
 #[cfg(test)]
 mod tests {
@@ -32,4 +45,5 @@ mod tests {
         assert!(vertices.len() > 0);
         assert_eq!(vertices.len() % 9, 0); // Multiple of 3 vertices * 3 coords
     }
+
 }

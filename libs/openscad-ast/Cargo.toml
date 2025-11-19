@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 tree-sitter = "0.25.10"
 tree-sitter-openscad = { path = "../openscad-parser/bindings/rust" }
+serde = { version = "1.0", features = ["derive"] }
+pipeline-types = { path = "../pipeline-types" }
+thiserror = "1.0"

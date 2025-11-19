@@ -94,8 +94,8 @@ High-level pipeline:
    OpenSCAD source text from the Playground editor.
 
 2. **Parser – `libs/openscad-parser`**  
-   - Tree-sitter grammar for OpenSCAD.  
-   - Produces a **concrete syntax tree (CST)**.
+   - Tree-sitter grammar for OpenSCAD via bindings.  
+   - Produces a typed **CST** with spans.
 
 3. **AST – `libs/openscad-ast`**  
    - Converts CST into a typed **AST**.  
@@ -122,10 +122,10 @@ High-level pipeline:
    - Internal math uses `f64`; export to GPU-friendly `f32` only at this boundary.
 
 7. **WASM – `libs/wasm`**  
-   - Provides a thin, well-typed boundary between Rust and JS.  
-   - Exposes functions like `compile_and_render(source: &str) -> Result<MeshHandle, Vec<Diagnostic>>`.  
-   - `MeshHandle` holds raw pointers/lengths into WASM memory.
-   - Initializes `console_error_panic_hook` in debug builds for meaningful panic output.
+     - Thin interface-only orchestration between crates.  
+     - Exposes `compile_and_render(source: &str)`; no parse-only API and no mesh logic inside WASM.  
+     - Returns zero-copy buffers via handles; frees memory after upload.  
+     - Initializes panic hooks in debug builds.
 
 8. **Playground**  
    - Svelte + Three.js front-end.  
@@ -179,7 +179,7 @@ playground (TS/Svelte)
   └─> wasm
         └─> manifold-rs   (consumes Evaluated AST, generates Mesh)
               └─> openscad-eval   (produces Evaluated AST / IR)
-                    └─> openscad-ast   (builds AST from CST)
+              └─> openscad-ast   (builds AST from CST)
                           └─> openscad-parser   (produces CST from source)
 ```
 
@@ -188,8 +188,8 @@ Key rules:
 - `openscad-parser` takes OpenSCAD source and produces a Tree-sitter CST.
 - `openscad-ast` depends on `openscad-parser` to build typed AST nodes.
 - `openscad-eval` consumes `openscad-ast` and produces an **Evaluated AST** (Geometry IR). It does **not** depend on `manifold-rs`.
-- `manifold-rs` consumes the Evaluated AST from `openscad-eval` and generates the geometry.
-- `wasm` orchestrates the call: `manifold_rs::process(source)`.
+      - `manifold-rs` consumes the Evaluated AST from `openscad-eval` and generates the geometry.
+      - `wasm` orchestrates via `manifold_rs` public APIs only (`process_openscad`, `parse_only`), and does not import parser/AST crates directly.
 
 ### 3.4 Library Responsibilities & Relationships
 

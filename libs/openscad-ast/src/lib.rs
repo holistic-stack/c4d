@@ -1,8 +1,9 @@
-use tree_sitter::{Parser, Tree};
+use tree_sitter::{Parser, Tree, Node};
+use pipeline_types::{Diagnostic, Severity, Span};
 use tree_sitter_openscad;
+use thiserror::Error;
 
-pub mod diagnostic;
-pub use diagnostic::{Diagnostic, Severity, Span};
+// diagnostics provided by pipeline-types
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cube {
@@ -15,26 +16,41 @@ pub enum Geometry {
     Cube(Cube),
 }
 
-pub fn parse(source: &str) -> Result<Geometry, Vec<Diagnostic>> {
+
+pub struct Cst {
+    pub tree: Tree,
+}
+
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("failed to parse source")]
+    Failed { span: Span, file: Option<String> },
+    #[error("syntax error in source code")]
+    Syntax { span: Span, file: Option<String> },
+}
+
+#[derive(Debug, Error)]
+pub enum AstError {
+    #[error("AST build failed: {message}")]
+    Build { message: String, span: Span, file: Option<String>, #[source] source: Option<ParseError> },
+}
+
+fn parse_cst_internal(source: &str, file: Option<&str>) -> Result<Cst, ParseError> {
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_openscad::language())
         .expect("Error loading OpenSCAD grammar");
+    let tree = parser.parse(source, None).ok_or(ParseError::Failed { span: Span { start: 0, end: source.len() }, file: file.map(|f| f.to_string()) })?;
+    if tree.root_node().has_error() {
+        return Err(ParseError::Syntax { span: Span { start: 0, end: source.len() }, file: file.map(|f| f.to_string()) });
+    }
+    Ok(Cst { tree })
+}
 
-    let tree = parser.parse(source, None).ok_or_else(|| {
-        vec![Diagnostic::error(
-            "Failed to parse source code".to_string(),
-            Span::new(0, source.len()),
-        )]
-    })?;
-
-    let root_node = tree.root_node();
+pub fn build_ast(cst: &Cst, source: &str) -> Result<Geometry, Vec<Diagnostic>> {
+    let root_node = cst.tree.root_node();
     if root_node.has_error() {
-        // TODO: Traverse tree to find specific error nodes and create precise diagnostics
-        return Err(vec![Diagnostic::error(
-            "Syntax error in source code".to_string(),
-            Span::new(0, source.len()),
-        )]);
+        return Err(vec![Diagnostic { severity: Severity::Error, message: "Syntax error".to_string(), span: Span { start: 0, end: source.len() }, hint: None }]);
     }
 
     // Traverse to find the first module_call
@@ -47,10 +63,12 @@ pub fn parse(source: &str) -> Result<Geometry, Vec<Diagnostic>> {
         }
     }
 
-    Err(vec![Diagnostic::error(
-        "No geometry found".to_string(),
-        Span::new(0, source.len()),
-    )])
+    Err(vec![Diagnostic { severity: Severity::Error, message: "No geometry found".to_string(), span: Span { start: 0, end: source.len() }, hint: None }])
+}
+
+pub fn build_ast_from_source(source: &str, file: Option<&str>) -> Result<Geometry, AstError> {
+    let cst = parse_cst_internal(source, file).map_err(|e| AstError::Build { message: "parse failed".to_string(), span: match e { ParseError::Failed { span, .. } | ParseError::Syntax { span, .. } => span }, file: file.map(|f| f.to_string()), source: Some(e) })?;
+    build_ast(&cst, source).map_err(|diags| AstError::Build { message: diags.first().map(|d| d.message.clone()).unwrap_or_else(|| "ast build error".to_string()), span: diags.first().map(|d| d.span).unwrap_or(Span { start: 0, end: source.len() }), file: file.map(|f| f.to_string()), source: None })
 }
 
 fn find_geometry(node: Node, source: &str) -> Option<Geometry> {
@@ -123,11 +141,13 @@ fn parse_cube_args(node: Node, source: &str) -> Cube {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn parse_cst(source: &str) -> Cst { parse_cst_internal(source, None).unwrap() }
 
     #[test]
     fn test_parse_cube_scalar() {
         let source = "cube(10);";
-        let geom = parse(source).unwrap();
+        let cst = parse_cst(source);
+        let geom = build_ast(&cst, source).unwrap();
         match geom {
             Geometry::Cube(cube) => {
                 assert_eq!(cube.size, [10.0, 10.0, 10.0]);
@@ -139,7 +159,8 @@ mod tests {
     #[test]
     fn test_parse_cube_vector() {
         let source = "cube([1, 2, 3]);";
-        let geom = parse(source).unwrap();
+        let cst = parse_cst(source);
+        let geom = build_ast(&cst, source).unwrap();
         match geom {
             Geometry::Cube(cube) => {
                 assert_eq!(cube.size, [1.0, 2.0, 3.0]);

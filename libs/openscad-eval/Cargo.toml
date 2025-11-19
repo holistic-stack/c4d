@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 openscad-ast = { path = "../openscad-ast" }
+pipeline-types = { path = "../pipeline-types" }
+thiserror = "1.0"

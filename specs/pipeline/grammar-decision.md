@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-After evaluating the existing local grammar against upstream alternatives, we will **keep the current local grammar** in `libs/openscad-parser/grammar.js`. The local grammar provides comprehensive OpenSCAD language support and integrates well with our Rust/WASM architecture.
+After evaluating the existing local grammar against upstream alternatives, we will **keep the current local grammar** in `libs/openscad-parser/grammar.js`. The local grammar provides comprehensive OpenSCAD language support and integrates well with our Rust/WASM architecture. Parsing at runtime is encapsulated inside `openscad-ast`, which uses the generated Rust bindings under `libs/openscad-parser/bindings/rust` to build a typed CST (with spans) and convert it to AST.
 
 ## Grammar Evaluation
 
@@ -16,7 +16,7 @@ After evaluating the existing local grammar against upstream alternatives, we wi
 - ✅ **Comprehensive Coverage**: Supports all OpenSCAD constructs including primitives, transformations, booleans, control flow, and advanced features
 - ✅ **Well-Structured**: Clean, modular grammar with helper functions for maintainability
 - ✅ **Test Coverage**: Extensive test corpus with 114+ test cases across basic, intermediate, and advanced categories
-- ✅ **Rust Integration**: Already integrated with Rust bindings under `bindings/rust/`
+- ✅ **Rust Integration**: Integrated through the `openscad-ast` module, which uses the Rust bindings under `libs/openscad-parser/bindings/rust/` to produce CST and AST internally (CST parsing is not exposed publicly)
 - ✅ **Performance**: Optimized for incremental parsing and error recovery
 
 **Language Features Covered:**
@@ -85,10 +85,10 @@ modules, functions, includes, assertions, special variables ($fn, $fa, $fs)
 4. **Documentation**: Keep grammar documentation current
 
 #### Integration Improvements
-1. **Rust Bindings**: Enhance existing bindings for better performance
-2. **Error Recovery**: Improve error messages and recovery strategies
+1. **Encapsulation**: Use `openscad-ast` to encapsulate CST parsing via `openscad-parser` bindings; downstream crates consume AST only
+2. **Error Recovery**: Improve error messages and recovery strategies while preserving spans across CST → AST → Eval
 3. **Incremental Parsing**: Optimize for real-time editor integration
-4. **WASM Optimization**: Minimize grammar size for faster loading
+4. **WASM Optimization**: Minimize grammar size for faster loading; the Playground does not import `web-tree-sitter` and uses Rust/WASM via `libs/wasm`
 
 ### Risk Mitigation
 

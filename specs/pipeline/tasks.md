@@ -113,10 +113,34 @@ Set up the Playground with a Web Worker and Three.js scene, ready to call WASM.
 
 ---
 
-### Task 1.4 – Parser Infrastructure (Rust/WASM)
+### Task 1.4 – Parser Infrastructure (Rust/WASM) ✅ COMPLETED
 
 **Goal**  
 Ensure the existing Rust `libs/openscad-parser` (Tree-sitter bindings) is wired through the Rust/WASM pipeline, so parsing occurs entirely inside Rust and the Playground never imports `web-tree-sitter` or parser WASM directly.
+
+**Status**: ✅ **COMPLETED** – Rust-backed parsing entry exposed via WASM, TS loader wrapper added, and Playground worker wired; tests passing.
+
+**Completed Work**:
+- ✅ `libs/wasm` exposes only `compile_and_render(source: &str)` and returns diagnostics on failure (no parse-only API)
+- ✅ Playground WASM loader uses compile path; worker parsing-only export removed
+- ✅ Rust unit tests (`cargo test -p openscad-wasm`) pass
+- ✅ Vitest suite passes in `playground/` (loader tests)
+
+### Task 1.5 – Enforce Pipeline Boundaries ✅ COMPLETED
+
+**Goal**
+Establish strict crate boundaries and public interfaces: openscad-parser (bindings) → openscad-ast → openscad-eval → manifold-rs → wasm.
+
+**Completed Work**:
+- ✅ Introduced shared `pipeline-types` for `Diagnostic`/`Span`
+- ✅ `openscad-ast` encapsulates CST parsing via `openscad-parser` bindings and exposes `build_ast_from_source()` / `build_ast()` (CST parsing not exposed)
+- ✅ Added `EvaluationContext` and `evaluate_ast` in `openscad-eval`
+- ✅ Added `to_mesh` API in `manifold-rs`; WASM orchestration-only `compile_and_render`
+
+**Acceptance Criteria** – All met
+- ✅ libs/wasm contains no mesh generation logic
+- ✅ Orchestration path calls `manifold-rs` public interfaces only; no direct parser/AST usage in WASM
+- ✅ Unit tests pass for boundaries; end-to-end compile works
 
 **Steps**
 
@@ -133,10 +157,10 @@ Ensure the existing Rust `libs/openscad-parser` (Tree-sitter bindings) is wired 
    - In the Playground worker, call the `parse_only` (or equivalent) function exported from the `libs/wasm` bundle as the **only** way to parse OpenSCAD source.  
    - Do not load or initialize `web-tree-sitter` in TypeScript.
 
-**Acceptance Criteria**
+**Acceptance Criteria** – All met
 
-- Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can call the `libs/wasm` parse entry point and receive either success or structured diagnostics.  
-- No `web-tree-sitter` dependency or Tree-sitter WASM assets exist in the Playground; parsing happens entirely in Rust/WASM through `libs/wasm`.
+- ✅ Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can call the `libs/wasm` parse entry point and receive either success or structured diagnostics.  
+- ✅ No `web-tree-sitter` dependency or Tree-sitter WASM assets exist in the Playground; parsing happens entirely in Rust/WASM through `libs/wasm`.
 
 ---
 
