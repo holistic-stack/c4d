@@ -44,123 +44,101 @@ Confirm and document that `libs/manifold-rs` will be a direct port of the local 
 - A design note exists in the repo (e.g. `specs/pipeline/kernel-decision.md`) clearly stating that `libs/manifold-rs` is a direct C++ Manifold port and that `manifold3d`/`csgrs` are not used as interim kernels.  
 - `overview-plan.md` and the dependency graph remain valid for this approach.
 
-### Task 0.2 – Select Tree-sitter Grammar Variant
+### Task 0.2 – Confirm Tree-sitter Grammar Integration
 
 **Goal**  
-Confirm which OpenSCAD grammar to use for Tree-sitter (local grammar vs upstream alternatives).
+Confirm that `libs/openscad-parser/src/grammar.json` is the canonical Tree-sitter grammar for OpenSCAD and that it is correctly wired into the Rust parser crate.
 
 **Steps**
 
-1. Evaluate the existing `libs/openscad-parser/grammar.js` vs any upstream grammars (e.g. `holistic-stack/tree-sitter-openscad`).  
-2. Confirm coverage for primitives, transformations, booleans, control flow, and advanced features.  
-3. Decide whether to:
-   - Keep the current local grammar, or  
-   - Adopt/track an upstream grammar and build its WASM via `tree-sitter-cli`.
+1. Verify that `libs/openscad-parser/src/grammar.json` builds successfully with Tree-sitter and covers primitives, transforms, booleans, control flow, and advanced features required for the initial slices.  
+2. Ensure the Rust bindings under `libs/openscad-parser/bindings/rust/lib.rs` use this `grammar.json` when generating the Tree-sitter parser.  
+3. Document `grammar.json` as the canonical grammar file in `overview-plan.md` and this task file.
 
 **Acceptance Criteria**
 
-- The chosen grammar variant is explicitly documented in `overview-plan.md` and this task file.  
+- `libs/openscad-parser/src/grammar.json` is clearly documented as the canonical grammar in `overview-plan.md` and this task file.  
 - Parser tests pass for the supported OpenSCAD syntax subset.
 
 ---
 
 ## Phase 1 – Infrastructure & "Tracer Bullet"
 
-### Task 1.1 – Workspace & Crate Setup ✅ COMPLETED
+### Task 1.1 – Workspace & Crate Setup 
 
 **Goal**  
 Initialize the Cargo workspace and core crates, with proper dependencies and configuration.
 
-**Status**: ✅ **COMPLETED** - Core manifold-rs implementation with comprehensive half-edge mesh, cube primitive, extensive test coverage (40 tests passing), and WASM integration.
+**Status**:  - Core manifold-rs implementation with comprehensive half-edge mesh, cube primitive, extensive test coverage (40 tests passing), and WASM integration.
 
 **Completed Work**:
-- ✅ Comprehensive half-edge mesh implementation with index-based design
-- ✅ Cube primitive with full mesh generation  
-- ✅ Extensive test coverage (40 tests passing)
-- ✅ WASM integration with geometry functionality
-- ✅ All core dependencies configured and working
+-  Comprehensive half-edge mesh implementation with index-based design
+-  Cube primitive with full mesh generation  
+-  Extensive test coverage (40 tests passing)
+-  WASM integration with geometry functionality
+-  All core dependencies configured and working
 
 **Acceptance Criteria** - All met:
-- ✅ `cargo build` at workspace root succeeds
-- ✅ `cargo test` passes with comprehensive test suite
-- ✅ Crate dependency graph properly configured
+-  `cargo build` at workspace root succeeds
+-  `cargo test` passes with comprehensive test suite
+-  Crate dependency graph properly configured
 
 ---
 
-### Task 1.2 – Playground Setup (Svelte + Three.js + Worker) 🔄 IN PROGRESS
+### Task 1.2 – Playground Setup (Svelte + Three.js + Worker) 
 
 **Goal**  
 Set up the Playground with a Web Worker and Three.js scene, ready to call WASM.
 
-**Status**: 🔄 **IN PROGRESS** - Basic Svelte + Three.js playground structure established with WASM integration.
+**Status**:  - Basic Svelte + Three.js playground structure established with WASM integration.
 
 **Completed Work**:
-- ✅ Basic Svelte + Three.js playground structure
-- ✅ WASM loader and integration
-- ✅ Geometry demo component  
-- ✅ Development server running
-- ✅ Web Worker implementation for pipeline (messaging, error handling)
-- ✅ TypeScript wrapper for WASM (Glue Code) finalized
+-  Basic Svelte + Three.js playground structure
+-  WASM loader and integration
+-  Geometry demo component  
+-  Development server running
+-  Web Worker implementation for pipeline (messaging, error handling)
+-  TypeScript wrapper for WASM (Glue Code) finalized
 
 **Remaining Steps**:
-- 🔄 Implement Three.js Scene Manager with full SRP
-- ⚠️ Fix WASM build issue (missing stdio.h/stdlib.h for tree-sitter on Windows)
+-  Implement Three.js Scene Manager with full SRP
+-  Fix WASM build issue (missing stdio.h/stdlib.h for tree-sitter on Windows)
 
 **Acceptance Criteria** - Partially met:
-- ✅ `pnpm dev` in `playground/` starts without errors
-- 🔄 Pipeline needs completion for full WASM integration (WASM build failing)
-- ✅ TypeScript strict mode enabled with no `any` types
+-  `pnpm dev` in `apps/playground/` starts without errors
+-  Pipeline needs completion for full WASM integration (WASM build failing)
+-  TypeScript strict mode enabled with no `any` types
 
 ---
 
-### Task 1.4 – Parser Infrastructure (Rust/WASM) ✅ COMPLETED
+### Task 1.4 – Parser Infrastructure (Rust/WASM) 
 
 **Goal**  
 Ensure the existing Rust `libs/openscad-parser` (Tree-sitter bindings) is wired through the Rust/WASM pipeline, so parsing occurs entirely inside Rust and the Playground never imports `web-tree-sitter` or parser WASM directly.
 
-**Status**: ✅ **COMPLETED** – Rust-backed parsing entry exposed via WASM, TS loader wrapper added, and Playground worker wired; tests passing.
+**Status**:  – Rust-backed parsing entry exposed via WASM, TS loader wrapper added, and Playground worker wired; tests passing.
 
 **Completed Work**:
-- ✅ `libs/wasm` exposes only `compile_and_render(source: &str)` and returns diagnostics on failure (no parse-only API)
-- ✅ Playground WASM loader uses compile path; worker parsing-only export removed
-- ✅ Rust unit tests (`cargo test -p openscad-wasm`) pass
-- ✅ Vitest suite passes in `playground/` (loader tests)
+-  `libs/wasm` exposes only `compile_and_render(source: &str)` and returns diagnostics on failure (no parse-only API)
+-  Playground WASM loader uses compile path; worker parsing-only export removed
+-  Rust unit tests (`cargo test -p openscad-wasm`) pass
+-  Vitest suite passes in `apps/playground/` (loader tests)
 
-### Task 1.5 – Enforce Pipeline Boundaries ✅ COMPLETED
+### Task 1.5 – Enforce Pipeline Boundaries 
 
 **Goal**
 Establish strict crate boundaries and public interfaces: openscad-parser (bindings) → openscad-ast → openscad-eval → manifold-rs (geometry + mesh handlers/export) → wasm (interface only).
 
 **Completed Work**:
-- ✅ Introduced shared `pipeline-types` for `Diagnostic`/`Span`
-- ✅ `openscad-ast` encapsulates CST parsing via `openscad-parser` bindings and exposes `build_ast_from_source()` / `build_ast()` (CST parsing not exposed)
-- ✅ Added `EvaluationContext` and `evaluate_ast` in `openscad-eval`
-- ✅ Added `to_mesh` API in `manifold-rs`; mesh handlers and export remain in `manifold-rs`; WASM orchestration-only `compile_and_render`
+-  Introduced shared `pipeline-types` for `Diagnostic`/`Span`
+-  `openscad-ast` encapsulates CST parsing via `openscad-parser` bindings and exposes `build_ast_from_source()` / `build_ast()` (CST parsing not exposed)
+-  Added `EvaluationContext` and `evaluate_ast` in `openscad-eval`
+-  Added `to_mesh` API in `manifold-rs`; mesh handlers and export remain in `manifold-rs`; WASM orchestration-only `compile_and_render`
 
 **Acceptance Criteria** – All met
-- ✅ libs/wasm contains no mesh generation logic
-- ✅ Orchestration path calls `manifold-rs` public interfaces only; no direct parser/AST usage in WASM; no mesh logic in WASM
-- ✅ Unit tests pass for boundaries; end-to-end compile works
-
-**Steps**
-
-1. **Parser Crate Wiring**
-   - Confirm that `libs/openscad-parser` is part of the Cargo workspace and that its Rust bindings under `libs/openscad-parser/bindings/rust/lib.rs` are used by `libs/openscad-ast` to build typed AST nodes from CST.  
-   - Ensure no `web-tree-sitter` or `tree-sitter.wasm` assets are referenced from the Playground.
-
-2. **WASM Entry Point for Parsing**
-   - In `libs/wasm`, expose a small, synchronous or async Rust function (e.g. `parse_only(source: &str) -> Result<(), Vec<Diagnostic>>` or similar) that:
-     - Calls into `libs/openscad-parser` (via `openscad-ast` where appropriate) to parse the source into CST/AST.  
-     - Returns either success or a list of diagnostics describing parse errors.
-
-3. **Worker Integration (Rust-Backed Parsing)**
-   - In the Playground worker, call the `parse_only` (or equivalent) function exported from the `libs/wasm` bundle as the **only** way to parse OpenSCAD source.  
-   - Do not load or initialize `web-tree-sitter` in TypeScript.
-
-**Acceptance Criteria** – All met
-
-- ✅ Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can call the `libs/wasm` parse entry point and receive either success or structured diagnostics.  
-- ✅ No `web-tree-sitter` dependency or Tree-sitter WASM assets exist in the Playground; parsing happens entirely in Rust/WASM through `libs/wasm`.
+-  libs/wasm contains no mesh generation logic
+-  Orchestration path calls `manifold-rs` public interfaces only; no direct parser/AST usage in WASM; no mesh logic in WASM
+-  Unit tests pass for boundaries; end-to-end compile works
 
 ---
 

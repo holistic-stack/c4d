@@ -176,7 +176,7 @@ High-level pipeline:
 The workspace must form a clear, acyclic dependency graph:
 
 ```text
-playground (TS/Svelte)
+apps/playground (SvelteKit + Three.js)
   └─> wasm
         └─> manifold-rs   (consumes Evaluated AST, generates Mesh)
               └─> openscad-eval   (produces Evaluated AST / IR)
@@ -238,7 +238,7 @@ libs/manifold-rs       (Manifold Geometry -> Mesh)
 libs/wasm              (MeshHandle)
         │
         ▼
-playground
+apps/playground
 ```
 
 ---
@@ -248,7 +248,7 @@ playground
 A vertical slice is always preferred over broad, unfinished scaffolding.
 
 - **Phase 0 – Pre-Bootstrap Evaluation**  
-  - Confirm the direct-port strategy for `libs/manifold-rs` (from the local C++ Manifold library using an index-based half-edge) and select the Tree-sitter grammar variant before committing to a long-term architecture.
+  - Confirm the direct-port strategy for `libs/manifold-rs` (from the local C++ Manifold library using an index-based half-edge) and confirm `libs/openscad-parser/src/grammar.json` as the canonical Tree-sitter grammar before committing to a long-term architecture.
 
 - **Phase 1 – Infrastructure & Tracer Bullet**  
   - Set up the Cargo workspace, core crates, and basic Svelte+WASM Playground.  
@@ -330,6 +330,10 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
   - Heavy computation must occur in a Web Worker.  
   - Main thread only handles UI and rendering.
 
+- **Playground Tooling Stack**  
+  - `apps/playground` uses Svelte 5 with SvelteKit, Vite 7, Vitest 4, TypeScript 5.9, ESLint 9, and plain `three` (no Svelte wrapper library).  
+  - All `pnpm` scripts (dev, test, lint) must complete with zero TypeScript and ESLint errors.
+
 - **Async & Long-Running Operations**  
   - Expose long-running operations (e.g. boolean CSG) as async WASM functions (via `wasm-bindgen-futures`) and `await` them in the worker to avoid blocking its event loop.
 
@@ -359,9 +363,9 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
 These internal resources are the primary references for the implementation:
 
 - **OpenSCAD Syntax: Grammar Definition and Test Coverage**  
-  - `libs/openscad-parser/grammar.js`  
+  - `libs/openscad-parser/src/grammar.json` (canonical Tree-sitter grammar)  
   - `libs/openscad-parser/test/corpus/**`  
-  - Optionally, an upstream OpenSCAD grammar such as `holistic-stack/tree-sitter-openscad` (if adopted) built via `tree-sitter-cli`.
+  - Optionally, an upstream OpenSCAD grammar such as `holistic-stack/tree-sitter-openscad` may be consulted for reference or additional test cases, but `grammar.json` remains the source of truth.
 
 - **Manifold Geometry Kernel: C++ Implementation & Porting Strategy**  
   - C++ Manifold sources under `manifold/` (e.g. `impl.h`, `impl.cpp`, `boolean3.*`, `constructors.cpp`).  

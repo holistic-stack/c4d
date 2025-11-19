@@ -1,9 +1,0 @@
-[package]
-name = "openscad-eval"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-openscad-ast = { path = "../openscad-ast" }
-pipeline-types = { path = "../pipeline-types" }
-thiserror = "1.0"

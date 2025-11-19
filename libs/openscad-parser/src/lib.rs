@@ -1,1 +1,0 @@
-// placeholder to satisfy workspace build; actual Rust bindings are under bindings/rust
