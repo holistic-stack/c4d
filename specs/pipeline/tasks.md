@@ -135,6 +135,7 @@ Set up the Playground with a Web Worker and Three.js scene, ready to call WASM.
 
 1. **Project Initialization**
    - Under `playground/`, initialize or confirm a SvelteKit/Vite setup.
+   - Use **pnpm** as the package manager (all commands below assume `pnpm dev`, `pnpm lint`, etc.).
    - Ensure TypeScript is enabled and strict mode is on.
    - Enforce `kebab-case` for TypeScript file and folder names (e.g. `mesh-wrapper.ts`, `pipeline.worker.ts`).
 
@@ -164,37 +165,36 @@ Set up the Playground with a Web Worker and Three.js scene, ready to call WASM.
 
 **Acceptance Criteria**
 
-- `npm run dev` in `playground/` starts without errors.
+- `pnpm dev` in `playground/` starts without errors.
 - A stub pipeline can send dummy geometry buffers from the worker to the main thread and render a simple mesh (e.g. hard-coded triangle).
 - All TypeScript code compiles under strict mode with **no `any` usages**.
 
 ---
 
-### Task 1.4 – Parser Infrastructure (WASM)
+### Task 1.4 – Parser Infrastructure (Rust/WASM)
 
 **Goal**  
-Run the OpenSCAD Tree-sitter parser in the browser via the worker.
+Ensure the existing Rust `libs/openscad-parser` (Tree-sitter bindings) is wired through the Rust/WASM pipeline, so parsing occurs entirely inside Rust and the Playground never imports `web-tree-sitter` or parser WASM directly.
 
 **Steps**
 
-1. **Tree-sitter Assets**
-   - Ensure `web-tree-sitter` is added as a dev dependency in `playground`.
-   - Build or copy `tree-sitter.wasm` and `tree-sitter-openscad.wasm` into a static/served directory (e.g. `public/`). If using an upstream grammar such as `holistic-stack/tree-sitter-openscad`, build its WASM via `tree-sitter-cli` as part of the toolchain.
+1. **Parser Crate Wiring**
+   - Confirm that `libs/openscad-parser` is part of the Cargo workspace and that its Rust bindings under `libs/openscad-parser/bindings/rust/lib.rs` are used by `libs/openscad-ast` to build typed AST nodes from CST.  
+   - Ensure no `web-tree-sitter` or `tree-sitter.wasm` assets are referenced from the Playground.
 
-2. **Parser Initialization Module**
-   - Create `src/worker/parser-init.ts` that:
-     - Initializes `web-tree-sitter`.
-     - Loads the OpenSCAD grammar WASM.  
-     - Exposes a function `initParser(): Promise<Parser>`.
+2. **WASM Entry Point for Parsing**
+   - In `libs/wasm`, expose a small, synchronous or async Rust function (e.g. `parse_only(source: &str) -> Result<(), Vec<Diagnostic>>` or similar) that:
+     - Calls into `libs/openscad-parser` (via `openscad-ast` where appropriate) to parse the source into CST/AST.  
+     - Returns either success or a list of diagnostics describing parse errors.
 
-3. **Integration in Worker**
-   - In `pipeline.worker.ts`, call `initParser()` on startup and keep a parser instance ready.
-   - Implement a basic `parse(source: string)` path that returns a JSON-safe description of the CST (for debugging).
+3. **Worker Integration (Rust-Backed Parsing)**
+   - In the Playground worker, call the `parse_only` (or equivalent) function exported from the `libs/wasm` bundle as the **only** way to parse OpenSCAD source.  
+   - Do not load or initialize `web-tree-sitter` in TypeScript.
 
 **Acceptance Criteria**
 
-- Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can parse and return a structured AST/CST representation.
-- Parser initialization happens exactly once per worker.
+- Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can call the `libs/wasm` parse entry point and receive either success or structured diagnostics.  
+- No `web-tree-sitter` dependency or Tree-sitter WASM assets exist in the Playground; parsing happens entirely in Rust/WASM through `libs/wasm`.
 
 ---
 

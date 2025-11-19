@@ -192,8 +192,9 @@ Key rules:
 ### 3.4 Library Responsibilities & Relationships
 
 - **`libs/openscad-parser`**  
-  - Boundary to Tree-sitter.  
-  - Knows how to take **OpenSCAD source text** and produce a **CST** (Concrete Syntax Tree) with spans, but does not know about types, evaluation, or geometry.
+  - Boundary to Tree-sitter, implemented entirely in Rust.  
+  - Uses the generated Tree-sitter parser and its Rust bindings under `bindings/rust/lib.rs` to turn **OpenSCAD source text** into a **CST** (Concrete Syntax Tree) with spans.  
+  - Runs inside the Rust/WASM module (via `libs/wasm`); there is **no** `web-tree-sitter` or standalone parser WASM imported directly in the Playground.
 
 - **`libs/openscad-ast`**  
   - Owns the **typed AST** data structures.  
@@ -212,13 +213,14 @@ Key rules:
 
 - **`libs/wasm`**  
   - Thin bridge between Rust and the browser.  
-  - Wraps evaluator + manifold calls behind functions such as `compile_and_render`, returning a `MeshHandle` and diagnostics.  
-  - Owns WASM exports (allocation, free functions, panic hook, async entrypoints).
+  - Orchestrates the full pipeline: `source -> CST (openscad-parser) -> AST (openscad-ast) -> Geometry IR (openscad-eval) -> Manifold (manifold-rs) -> GlMeshBuffers`.  
+  - Exposes high-level functions such as `compile_and_render`, plus allocation/free APIs, panic hook initialization, and async entrypoints.  
+  - This is the **only** WASM module imported by the Playground.
 
 - **`playground`**  
   - Svelte + Three.js UI.  
-  - Runs the pipeline in a Web Worker, calls `libs/wasm` functions, and renders GPU buffers.  
-  - Never touches raw WASM pointers directly; uses a small TypeScript wrapper.
+  - Runs the pipeline in a Web Worker, calling into the single WASM bundle produced from `libs/wasm` (built via `build-wasm.js`) and rendering GPU buffers.  
+  - Never imports `web-tree-sitter` or Tree-sitter WASM directly, and never touches raw WASM pointers; it uses a small TypeScript wrapper around the `MeshHandle`.
 
 #### 3.4.1 Data Flow Diagram
 
