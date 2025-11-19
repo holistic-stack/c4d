@@ -177,50 +177,44 @@ The workspace must form a clear, acyclic dependency graph:
 ```text
 playground (TS/Svelte)
   └─> wasm
-        └─> openscad-eval
-              ├─> openscad-ast   (builds AST from CST)
-              │     └─> openscad-parser   (produces CST from source)
-              └─> manifold-rs
+        └─> manifold-rs   (consumes Evaluated AST, generates Mesh)
+              └─> openscad-eval   (produces Evaluated AST / IR)
+                    └─> openscad-ast   (builds AST from CST)
+                          └─> openscad-parser   (produces CST from source)
 ```
 
 Key rules:
 
-- `manifold-rs` **only** depends on foundational crates (e.g. `glam`, `rayon`, `thiserror`, `robust`).  
-- `openscad-parser` takes OpenSCAD source and produces a Tree-sitter CST; `openscad-ast` depends on `openscad-parser` to build typed AST nodes from this CST; `openscad-eval` then consumes `openscad-ast` and `manifold-rs`, but **not** the Playground or WASM.  
-- No crate may reference `playground`.
+- `openscad-parser` takes OpenSCAD source and produces a Tree-sitter CST.
+- `openscad-ast` depends on `openscad-parser` to build typed AST nodes.
+- `openscad-eval` consumes `openscad-ast` and produces an **Evaluated AST** (Geometry IR). It does **not** depend on `manifold-rs`.
+- `manifold-rs` consumes the Evaluated AST from `openscad-eval` and generates the geometry.
+- `wasm` orchestrates the call: `manifold_rs::process(source)`.
 
 ### 3.4 Library Responsibilities & Relationships
 
 - **`libs/openscad-parser`**  
   - Boundary to Tree-sitter, implemented entirely in Rust.  
-  - Uses the generated Tree-sitter parser and its Rust bindings under `bindings/rust/lib.rs` to turn **OpenSCAD source text** into a **CST** (Concrete Syntax Tree) with spans.  
-  - Runs inside the Rust/WASM module (via `libs/wasm`); there is **no** `web-tree-sitter` or standalone parser WASM imported directly in the Playground.
+  - Uses the generated Tree-sitter parser and its Rust bindings to turn **OpenSCAD source text** into a **CST** (Concrete Syntax Tree).
 
 - **`libs/openscad-ast`**  
   - Owns the **typed AST** data structures.  
-  - Knows how to walk the CST produced by the parser and build a type-safe AST that retains source spans and syntax details needed for diagnostics.  
-  - Does **not** evaluate expressions or produce geometry.
+  - Converts CST to AST.
 
 - **`libs/openscad-eval`**  
-  - Interprets the AST and produces **Geometry IR** (`GeometryNode`), using caching and recursion protection.  
-  - Knows about OpenSCAD semantics (modules, functions, `$fn/$fa/$fs`, includes, parameter defaults).  
-  - Delegates all heavy geometry to `libs/manifold-rs`; it does not know about half-edge internals.
+  - Interprets the AST and produces **Evaluated AST** (Geometry IR).  
+  - Handles variables, modules, loops, functions.  
+  - **Pure data transformation**: AST -> Evaluated AST. No geometry generation.
 
 - **`libs/manifold-rs`**  
   - Geometry kernel and manifold mesh implementation.  
-  - Owns the **index-based half-edge** arenas and robust predicates.  
-  - Provides safe APIs like `union/difference/intersection` operating on `Manifold`, hiding internal indices and any `unsafe` from the rest of the pipeline.
+  - **Consumes Evaluated AST** to construct the Manifold geometry.  
+  - Exposes high-level APIs to convert OpenSCAD source (via eval) into Meshes.
 
 - **`libs/wasm`**  
-  - Thin bridge between Rust and the browser.  
-  - Orchestrates the full pipeline: `source -> CST (openscad-parser) -> AST (openscad-ast) -> Geometry IR (openscad-eval) -> Manifold (manifold-rs) -> GlMeshBuffers`.  
-  - Exposes high-level functions such as `compile_and_render`, plus allocation/free APIs, panic hook initialization, and async entrypoints.  
-  - This is the **only** WASM module imported by the Playground.
-
-- **`playground`**  
-  - Svelte + Three.js UI.  
-  - Runs the pipeline in a Web Worker, calling into the single WASM bundle produced from `libs/wasm` (built via `build-wasm.js`) and rendering GPU buffers.  
-  - Never imports `web-tree-sitter` or Tree-sitter WASM directly, and never touches raw WASM pointers; it uses a small TypeScript wrapper around the `MeshHandle`.
+  - Thin bridge.  
+  - Calls `manifold-rs` to process code and return mesh buffers.  
+  - No mesh logic, no parsing logic.
 
 #### 3.4.1 Data Flow Diagram
 
@@ -228,43 +222,22 @@ Key rules:
 OpenSCAD source text
         │
         ▼
-libs/openscad-parser   (Tree-sitter CST with spans)
+libs/openscad-parser   (CST)
         │
         ▼
-libs/openscad-ast      (typed AST nodes with spans)
+libs/openscad-ast      (AST)
         │
         ▼
-libs/openscad-eval     (Geometry IR + caching + recursion guards)
+libs/openscad-eval     (Evaluated AST / IR)
         │
         ▼
-libs/manifold-rs       (manifold mesh via index-based half-edge)
+libs/manifold-rs       (Manifold Geometry -> Mesh)
         │
         ▼
-libs/wasm              (MeshHandle + diagnostics for JS)
+libs/wasm              (MeshHandle)
         │
         ▼
-playground             (worker + Three.js viewer)
-```
-
-#### 3.4.2 Dependency Layering Diagram
-
-```text
-UI layer
-  playground (Svelte + Three.js)
-        │
-        ▼
-Boundary layer
-  libs/wasm
-        │
-        ▼
-Core pipeline
-  libs/openscad-eval
-       │        │
-       │        └──> libs/manifold-rs   (geometry kernel)
-       ▼
-  libs/openscad-ast   (typed AST)
-       ▼
-  libs/openscad-parser (Tree-sitter CST)
+playground
 ```
 
 ---

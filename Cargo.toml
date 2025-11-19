@@ -3,7 +3,8 @@ resolver = "2"
 
 members = [
     "libs/openscad-parser",
-    "libs/openscad-ast",
-    "libs/openscad-manifold",
+    "libs/openscad-ast", 
+    "libs/openscad-eval",
+    "libs/manifold-rs",
     "libs/wasm"
 ]

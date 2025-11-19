@@ -1,0 +1,7 @@
+[package]
+name = "openscad-eval"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+openscad-ast = { path = "../openscad-ast" }
