@@ -58,119 +58,164 @@ Confirm that `libs/openscad-parser/src/grammar.json` is the canonical Tree-sitte
 **Acceptance Criteria**
 
 - `libs/openscad-parser/src/grammar.json` is clearly documented as the canonical grammar in `overview-plan.md` and this task file.  
-- Parser tests pass for the supported OpenSCAD syntax subset.
-
----
-
 ## Phase 1 – Infrastructure & "Tracer Bullet"
 
 ### Task 1.1 – Workspace & Crate Setup 
 
 **Goal**  
-Initialize the Cargo workspace and core crates, with proper dependencies and configuration.
+Initialize the Cargo workspace and core Rust crates from scratch, with proper dependencies and configuration.
 
-**Status**:  - Core manifold-rs implementation with comprehensive half-edge mesh, cube primitive, extensive test coverage (40 tests passing), and WASM integration.
+**Steps**
 
-**Completed Work**:
--  Comprehensive half-edge mesh implementation with index-based design
--  Cube primitive with full mesh generation  
--  Extensive test coverage (40 tests passing)
--  WASM integration with geometry functionality
--  All core dependencies configured and working
+1. **Workspace Configuration**  
+   - Update root `Cargo.toml` to include these members:  
+     - `libs/openscad-parser`  
+     - `libs/openscad-ast`  
+     - `libs/openscad-eval`  
+     - `libs/manifold-rs`  
+     - `libs/wasm`  
 
-**Acceptance Criteria** - All met:
--  `cargo build` at workspace root succeeds
--  `cargo test` passes with comprehensive test suite
--  Crate dependency graph properly configured
+2. **Create `libs/manifold-rs`**  
+   - Create crate structure:  
+     - `src/lib.rs`  
+     - `src/config.rs`  
+     - `src/core/vec3/mod.rs` (type alias `pub type Vec3 = glam::DVec3;`).  
+   - Add dependencies in `Cargo.toml`:  
+     - `glam` (f64 support)  
+     - `thiserror`  
+     - `robust`  
+     - `rayon`  
+   - Define `config.rs` with core constants (e.g. `EPSILON`, `DEFAULT_SEGMENTS`) and document their purpose.
+
+3. **Create `libs/openscad-eval`**  
+   - Create structure:  
+     - `src/lib.rs`  
+     - `src/ir/mod.rs`  
+     - `src/evaluator/mod.rs`  
+     - `src/filesystem.rs`  
+   - Add dependencies:  
+     - `glam`  
+     - `stacker`  
+   - Add a basic `GeometryNode` enum scaffold under `ir/` (cube variant can initially be a stub, to be filled in Phase 2).  
+   - Implement recursion depth guards and configure `stacker` for deeper recursion in evaluator entry points.
+
+4. **Create `libs/wasm`**  
+   - Crate type: `cdylib`.  
+   - Dependencies:  
+     - `wasm-bindgen`  
+     - `console_error_panic_hook`  
+   - In `src/lib.rs`:  
+     - Initialize `console_error_panic_hook` in an `init` function called by JS in debug builds.  
+     - Add a small placeholder export (e.g. `greet()`), to be replaced by real pipeline functions in later tasks.  
+   - Ensure the workspace builds for the `wasm32-unknown-unknown` target and, if using `rayon` on WASM, that appropriate thread/atomics features, bulk-memory, and linker flags are enabled for future WASM threads.
+
+**Acceptance Criteria**
+
+- `cargo build` at workspace root succeeds without errors.  
+- `cargo test` (with initial no-op tests) succeeds for all new crates.  
+- Crate dependency graph matches the architecture in `overview-plan.md` (no unexpected cycles).
 
 ---
 
 ### Task 1.2 – Playground Setup (Svelte + Three.js + Worker) 
 
 **Goal**  
-Set up the Playground with a Web Worker and Three.js scene, ready to call WASM.
+Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the real `libs/wasm` bundle (no mocks).
 
-**Status**:  - Basic Svelte + Three.js playground structure established with WASM integration.
+**Steps**
 
-**Completed Work**:
--  Basic Svelte + Three.js playground structure
--  WASM loader and integration
--  Geometry demo component  
--  Development server running
--  Web Worker implementation for pipeline (messaging, error handling)
--  TypeScript wrapper for WASM (Glue Code) finalized
+1. **Project Initialization**  
+   - Under `apps/playground/`, initialize a SvelteKit project.  
+   - Use **pnpm** as the package manager (`pnpm dev`, `pnpm test`, `pnpm lint`).  
+   - Use Svelte 5 with SvelteKit, Vite 7, Vitest 4, TypeScript 5.9, ESLint 9, and plain `three` (no Svelte wrapper library).  
+   - Enable strict TypeScript mode.  
+   - Enforce `kebab-case` for TypeScript file and folder names (e.g. `mesh-wrapper.ts`, `pipeline.worker.ts`).  
 
-**Remaining Steps**:
--  Implement Three.js Scene Manager with full SRP
--  Fix WASM build issue (missing stdio.h/stdlib.h for tree-sitter on Windows)
+2. **Web Worker for Pipeline**  
+   - Create `src/worker/pipeline.worker.ts`.  
+   - Responsibilities:  
+     - Load the actual WASM bundle produced from `libs/wasm` (built via `../build-wasm.js`), not a mock module.  
+     - Expose a message protocol for `compile(source: string)`.  
+     - Forward diagnostics and mesh handles back to the main thread.
 
-**Acceptance Criteria** - Partially met:
--  `pnpm dev` in `apps/playground/` starts without errors
--  Pipeline needs completion for full WASM integration (WASM build failing)
--  TypeScript strict mode enabled with no `any` types
+3. **TypeScript Wrapper for WASM (Glue Code)**  
+   - Create `src/lib/wasm/mesh-wrapper.ts` that:  
+     - Encapsulates raw pointer handling (`ptr`, `len`) from `MeshHandle`.  
+     - Provides a `Mesh` class or interface with typed views over WASM memory (`Float32Array`, `Uint32Array`).  
+     - Exposes a `dispose()`/`free()` method that calls the Rust `free_*` entry point.  
+     - Uses precise TypeScript types (no `any`), and defines explicit interfaces for `MeshHandle`, diagnostics, and worker messages.
+
+4. **Three.js Scene Manager**  
+   - Implement `src/components/viewer/scene-manager.ts` with SRP:  
+     - Set up renderer, camera, lights, and controls.  
+     - Expose functions to attach to a canvas and update geometry from provided buffers.
+
+**Acceptance Criteria**
+
+- `pnpm dev` in `apps/playground/` starts without runtime errors.  
+- A stub pipeline can send dummy geometry buffers from the worker to the main thread and render a simple mesh (e.g. a hard-coded triangle).  
+- TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly.
 
 ---
 
 ### Task 1.4 – Parser Infrastructure (Rust/WASM) 
 
 **Goal**  
-Ensure the existing Rust `libs/openscad-parser` (Tree-sitter bindings) is wired through the Rust/WASM pipeline, so parsing occurs entirely inside Rust and the Playground never imports `web-tree-sitter` or parser WASM directly.
+Wire the Rust `libs/openscad-parser` (Tree-sitter bindings) through the Rust/WASM pipeline so that parsing occurs entirely inside Rust, and the Playground never imports `web-tree-sitter` or parser WASM directly.
 
-**Status**:  – Rust-backed parsing entry exposed via WASM, TS loader wrapper added, and Playground worker wired; tests passing.
+**Steps**
 
-**Completed Work**:
--  `libs/wasm` exposes only `compile_and_render(source: &str)` and returns diagnostics on failure (no parse-only API)
--  Playground WASM loader uses compile path; worker parsing-only export removed
--  Rust unit tests (`cargo test -p openscad-wasm`) pass
--  Vitest suite passes in `apps/playground/` (loader tests)
+1. **Parser Crate Wiring**  
+   - Confirm that `libs/openscad-parser` is part of the Cargo workspace and that its Rust bindings under `libs/openscad-parser/bindings/rust/lib.rs` use `src/grammar.json` when generating the Tree-sitter parser.  
+   - Ensure `libs/openscad-ast` consumes the parser API to build typed AST nodes from CST.  
+   - Ensure no `web-tree-sitter` or `tree-sitter.wasm` assets are referenced from `apps/playground`.
 
-### Task 1.5 – Enforce Pipeline Boundaries 
+2. **WASM Entry Point for Parsing**  
+   - In `libs/wasm`, expose a small synchronous or async Rust function (e.g. `parse_only(source: &str) -> Result<(), Vec<Diagnostic>>` or similar) that:  
+     - Calls into `libs/openscad-parser` (via `openscad-ast` where appropriate) to parse the source into CST/AST.  
+     - Returns either success or a list of diagnostics describing parse errors.
 
-**Goal**
-Establish strict crate boundaries and public interfaces: openscad-parser (bindings) → openscad-ast → openscad-eval → manifold-rs (geometry + mesh handlers/export) → wasm (interface only).
+3. **Worker Integration (Rust-Backed Parsing)**  
+   - In the Playground worker, call the `parse_only` (or equivalent) function exported from the `libs/wasm` bundle as the **only** way to parse OpenSCAD source.  
+   - Do not load or initialize `web-tree-sitter` in TypeScript.
 
-**Completed Work**:
--  Introduced shared `pipeline-types` for `Diagnostic`/`Span`
--  `openscad-ast` encapsulates CST parsing via `openscad-parser` bindings and exposes `build_ast_from_source()` / `build_ast()` (CST parsing not exposed)
--  Added `EvaluationContext` and `evaluate_ast` in `openscad-eval`
--  Added `to_mesh` API in `manifold-rs`; mesh handlers and export remain in `manifold-rs`; WASM orchestration-only `compile_and_render`
+**Acceptance Criteria**
 
-**Acceptance Criteria** – All met
--  libs/wasm contains no mesh generation logic
--  Orchestration path calls `manifold-rs` public interfaces only; no direct parser/AST usage in WASM; no mesh logic in WASM
--  Unit tests pass for boundaries; end-to-end compile works
+- Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can call the `libs/wasm` parse entry point and receive either success or structured diagnostics.  
+- No `web-tree-sitter` dependency or Tree-sitter WASM assets exist in the Playground; parsing happens entirely in Rust/WASM through `libs/wasm`.
 
 ---
 
-## Phase 2 – First Primitive (Cube)
+### Task 1.5 – Enforce Pipeline Boundaries 
 
-#### Porting Guidelines for `libs/manifold-rs` (C++ → Rust)
+**Goal**  
+Ensure all future `libs/manifold-rs` implementations follow a consistent, mechanical C++ → Rust porting approach (index-based half-edge, `rayon` parallelism, explicit errors, robust predicates), before any primitives or boolean operations are added.
 
-Before implementing specific primitives or boolean operations in `libs/manifold-rs`, apply these guidelines to make the port from the C++ Manifold codebase mechanical and consistent:
+**Steps**
 
-- **Half-Edge Representation**  
-  - Replace raw pointers or index fields that point into C++ arrays with **index-based handles** in Rust (`u32` indices into `Vec` arenas).  
-  - Keep ownership in central arenas (e.g. `Vec<Vertex>`, `Vec<HalfEdge>`, `Vec<Face>`); pass indices between functions instead of references with complex lifetimes.
+1. **Half-Edge Representation**  
+   - Replace raw pointers or index fields that point into C++ arrays with **index-based handles** in Rust (`u32` indices into `Vec` arenas).  
+   - Keep ownership in central arenas (e.g. `Vec<Vertex>`, `Vec<HalfEdge>`, `Vec<Face>`); pass indices between functions instead of references with complex lifetimes.
 
-- **Parallelism (thrust/TBB → `rayon`)**  
-  - For C++ code that uses `thrust`/TBB to parallelize loops over faces/edges, map them to `par_iter()`/`par_iter_mut()` over the corresponding `Vec`s in Rust.  
-  - Keep side effects confined to data local to each loop iteration, or use scoped parallelism patterns to avoid shared mutable state.
+2. **Parallelism (thrust/TBB → `rayon`)**  
+   - For C++ code that uses `thrust`/TBB to parallelize loops over faces/edges, map them to `par_iter()`/`par_iter_mut()` over the corresponding `Vec`s in Rust.  
+   - Keep side effects confined to data local to each loop iteration, or use scoped parallelism patterns to avoid shared mutable state.
 
-- **Memory & Safety**  
-  - Eliminate manual memory management patterns from C++ (new/delete, raw pointer arithmetic).  
-  - Use `unsafe` only in small, well-audited sections where performance demands it, and always expose a safe API on top.  
-  - Replace C++ `assert`/`abort` with explicit `Result`-based errors or internal debug assertions that never leak to the public API as panics.
+3. **Memory & Safety**  
+   - Eliminate manual memory management patterns from C++ (new/delete, raw pointer arithmetic).  
+   - Use `unsafe` only in small, well-audited sections where performance demands it, and always expose a safe API on top.  
+   - Replace C++ `assert`/`abort` with explicit `Result`-based errors or internal debug assertions that never leak to the public API as panics.
 
-- **Error Handling**  
-  - Convert C++ failure paths (error codes, special values) into typed Rust errors using `thiserror`.  
-  - Ensure all public `manifold-rs` operations used by the Evaluator return `Result<Self, Error>` or similar, never relying on panics.
+4. **Error Handling**  
+   - Convert C++ failure paths (error codes, special values) into typed Rust errors using `thiserror`.  
+   - Ensure all public `manifold-rs` operations used by the Evaluator return `Result<Self, Error>` or similar, never relying on panics.
 
-- **Testing Strategy**  
-  - Where possible, mirror C++ test cases/fixtures in Rust, comparing topological invariants (e.g. Euler characteristic, manifold validity) rather than relying only on exact floating-point equality.  
-  - Add new tests that exercise edge cases surfaced by fuzzing and visual regression.
+5. **Testing Strategy**  
+   - Where possible, mirror C++ test cases/fixtures in Rust, comparing topological invariants (e.g. Euler characteristic, manifold validity) rather than relying only on exact floating-point equality.  
+   - Add new tests that exercise edge cases surfaced by fuzzing and visual regression.
 
-- **Robust Predicates Initialization**  
-  - If the chosen robust predicates library requires a one-time initialization (for example an `exactinit()` call), invoke this once at WASM startup (e.g. in a Rust `init` function or lazy static) so all downstream geometry code benefits from correct predicate behaviour.
+6. **Robust Predicates Initialization**  
+   - If the chosen robust predicates library requires a one-time initialization (for example an `exactinit()` call), invoke this once at WASM startup (e.g. in a Rust `init` function or lazy static) so all downstream geometry code benefits from correct predicate behaviour.
 
 **Example: Porting a Boolean Union Loop (Conceptual)**
 
@@ -219,7 +264,10 @@ Before implementing specific primitives or boolean operations in `libs/manifold-
       - Expected behaviour on disjoint vs overlapping bounding boxes.  
     - Ensuring the Rust `boolean` operations never panic and always return a `Result`.
 
-These guidelines, together with the examples above, apply to all `manifold-rs` tasks below (cube, sphere, transforms, booleans) and should be followed consistently for each ported algorithm.
+**Acceptance Criteria**
+
+- Code reviews for new `libs/manifold-rs` features explicitly check against these guidelines (half-edge representation, parallelism, safety, error handling, testing, robust predicates).  
+- New public boolean APIs in `libs/manifold-rs` (`boolean`, `union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
 
 ### Task 2.1 – Manifold-RS Cube Primitive (TDD)
 

@@ -4,7 +4,8 @@
       "Bash(pnpm dev:*)",
       "Bash(pnpm test)",
       "Bash(pnpm test:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "mcp__perplexity-ask__perplexity_ask"
     ],
     "deny": [],
     "ask": []
