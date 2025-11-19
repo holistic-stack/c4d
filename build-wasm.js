@@ -60,7 +60,23 @@ const rustflags = [
   '-C strip=symbols'
 ].join(' ');
 
-run(`cargo build --release --package ${crateName} --target wasm32-unknown-unknown`, { cwd: root, env: { ...process.env, RUSTFLAGS: rustflags } });
+// Get the Rust sysroot for WASI
+const rustSysroot = 'C:\\Users\\luciano\\scoop\\persist\\rustup-gnu\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc';
+const wasiSysroot = path.join(rustSysroot, 'lib', 'rustlib', 'wasm32-wasip1');
+
+// Use wasm32-unknown-unknown target but with WASI sysroot for Zig
+run(`cargo build --release --package ${crateName} --target wasm32-unknown-unknown`, { 
+  cwd: root, 
+  env: { 
+    ...process.env, 
+    RUSTFLAGS: rustflags,
+    CC_wasm32_unknown_unknown: 'zig cc -target wasm32-wasi',
+    AR_wasm32_unknown_unknown: 'zig ar',
+    CFLAGS_wasm32_unknown_unknown: `-target wasm32-wasi --sysroot="${wasiSysroot}" -O3 -ffunction-sections -fdata-sections -fno-exceptions`,
+    CRATE_CC_NO_DEFAULTS: '1',
+    WASI_SYSROOT: wasiSysroot
+  } 
+});
 
 fs.mkdirSync(outDir, { recursive: true });
 
