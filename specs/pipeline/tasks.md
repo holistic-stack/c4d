@@ -169,6 +169,10 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 - The worker loads the **real** `libs/wasm` bundle built via `../build-wasm.js` (Docker) and calls an exported function that returns geometry buffers (initially a trivial constant mesh such as a single triangle), with **no mocked WASM modules** in TypeScript.  
 - TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly (zero lint errors).
 
+**Task 1.2 Current Status:**  
+- `apps/playground` already has a minimal SvelteKit project bootstrapped under `apps/playground` (Three.js scene and worker wiring are not implemented yet).  
+- Three.js setup, Web Worker integration, and WASM/`manifold-rs` geometry preview are still pending.
+
 ---
 
 ### Task 1.3 – Dockerized WASM Build Pipeline

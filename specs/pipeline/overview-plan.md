@@ -278,6 +278,7 @@ No further setup required for Phase 1 integration.
   - Implement minimal “hello world” paths:  
     - Playground → Worker → WASM (for example, echo a string or return a trivial mesh).  
     - Editor → `openscad-lsp` (a tower-lsp server that can parse a file and publish basic syntax diagnostics).
+  - *Current status:* `apps/playground` already contains a minimal SvelteKit setup; Three.js scene, worker wiring, and WASM/`manifold-rs` geometry preview are still pending.
 
 - **Phase 2 – First Primitive (Cube)**  
   - Implement a fully working `cube()` primitive end-to-end.  
