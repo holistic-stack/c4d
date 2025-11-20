@@ -1,0 +1,87 @@
+==================
+Nested Modules
+==================
+
+module outer() {
+    module inner() {
+        cube(10);
+    }
+    inner();
+}
+
+---
+
+(source_file
+  (module_item
+    name: (identifier)
+    parameters: (parameters)
+    body: (union_block
+      (module_item
+        name: (identifier)
+        parameters: (parameters)
+        body: (union_block
+          (transform_chain
+            (module_call
+              name: (identifier)
+              arguments: (arguments
+                (integer))))))
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments))))))
+
+==================
+User Defined Function with Multiple Args
+==================
+
+function dist(x, y) = sqrt(x*x + y*y);
+
+---
+
+(source_file
+  (function_item
+    name: (identifier)
+    parameters: (parameters
+      (parameter (identifier))
+      (parameter (identifier)))
+    (function_call
+      name: (identifier)
+      arguments: (arguments
+        (binary_expression
+          left: (binary_expression
+            left: (identifier)
+            right: (identifier))
+          right: (binary_expression
+            left: (identifier)
+            right: (identifier)))))))
+
+==================
+Variable Scope
+==================
+
+x = 10;
+module test() {
+    x = 20;
+    cube(x);
+}
+
+---
+
+(source_file
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (integer)))
+  (module_item
+    name: (identifier)
+    parameters: (parameters)
+    body: (union_block
+      (var_declaration
+        (assignment
+          name: (identifier)
+          value: (integer)))
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (identifier)))))))

@@ -1,0 +1,61 @@
+==================
+If Statement
+==================
+
+if (true) {
+    cube(10);
+} else {
+    sphere(10);
+}
+
+---
+
+(source_file
+  (if_block
+    condition: (parenthesized_expression
+      (boolean))
+    consequence: (union_block
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (integer)))))
+    alternative: (union_block
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (integer)))))))
+
+==================
+For Loop
+==================
+
+for (i = [0:10]) {
+    translate([i, 0, 0]) cube(1);
+}
+
+---
+
+(source_file
+  (for_block
+    (assignments
+      (assignment
+        name: (identifier)
+        value: (range
+          start: (integer)
+          end: (integer))))
+    body: (union_block
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (list
+              (identifier)
+              (integer)
+              (integer))))
+        (transform_chain
+          (module_call
+            name: (identifier)
+            arguments: (arguments
+              (integer))))))))

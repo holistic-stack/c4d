@@ -178,10 +178,15 @@ The workspace must form a clear, acyclic dependency graph:
 ```text
 apps/playground (SvelteKit + Three.js)
   └─> wasm
-        └─> manifold-rs   (consumes Evaluated AST, generates Mesh)
+        └─> manifold-rs        (consumes Evaluated AST, generates Mesh)
               └─> openscad-eval   (produces Evaluated AST / IR)
-              └─> openscad-ast   (builds AST from CST)
+              └─> openscad-ast    (builds AST from CST)
                           └─> openscad-parser   (produces CST from source)
+
+editors (VSCode, Neovim, etc.)
+  └─> openscad-lsp          (tower-lsp + Tree-sitter)
+        └─> openscad-ast?   (optional, for semantic features)
+                └─> openscad-parser
 ```
 
 Key rules:
@@ -217,6 +222,12 @@ Key rules:
   - Calls `manifold-rs` to process code and return mesh buffers.  
   - No mesh logic, no parsing logic.
 
+- **`libs/openscad-lsp`**  
+  - Rust-native Language Server built with `tower-lsp`.  
+  - Uses `libs/openscad-parser` (Tree-sitter grammar + Rust bindings) to maintain incremental parse trees for open documents.  
+  - Provides editor features such as diagnostics, document symbols, and later go-to-definition/completion via high-level domain types.  
+  - Runs outside WASM (as a native process) and never exposes raw `tree_sitter::Node` values to clients.
+
 #### 3.4.1 Data Flow Diagram
 
 ```text
@@ -250,9 +261,23 @@ A vertical slice is always preferred over broad, unfinished scaffolding.
 - **Phase 0 – Pre-Bootstrap Evaluation**  
   - Confirm the direct-port strategy for `libs/manifold-rs` (from the local C++ Manifold library using an index-based half-edge) and confirm `libs/openscad-parser/src/grammar.json` as the canonical Tree-sitter grammar before committing to a long-term architecture.
 
+**Phase 0 Confirmation (Task 0.2):**
+
+`libs/openscad-parser/src/grammar.json` confirmed as canonical:
+
+- Coverage: primitives (`module_call` e.g. `cube`), transforms (`transform_chain` e.g. `translate`), booleans (`union_block`, `module_call` e.g. `difference`), control flow (`for_block`/`if_block`), advanced (`module_item`/`function_item`/`include_statement`).
+
+- Build: `tree-sitter generate` successful (src/parser.c compiled via `bindings/rust/build.rs`).
+
+- Bindings: `bindings/rust/lib.rs` provides `language()`; `test_can_load_grammar()` validates loading.
+
+No further setup required for Phase 1 integration.
+
 - **Phase 1 – Infrastructure & Tracer Bullet**  
-  - Set up the Cargo workspace, core crates, and basic Svelte+WASM Playground.  
-  - Implement a minimal “hello world” path from Playground → Worker → WASM.
+  - Set up the Cargo workspace, core crates, `libs/openscad-lsp`, and basic Svelte+WASM Playground.  
+  - Implement minimal “hello world” paths:  
+    - Playground → Worker → WASM (for example, echo a string or return a trivial mesh).  
+    - Editor → `openscad-lsp` (a tower-lsp server that can parse a file and publish basic syntax diagnostics).
 
 - **Phase 2 – First Primitive (Cube)**  
   - Implement a fully working `cube()` primitive end-to-end.  

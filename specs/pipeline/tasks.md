@@ -59,6 +59,17 @@ Confirm that `libs/openscad-parser` is the canonical Tree-sitter grammar for Ope
 
 - `libs/openscad-parser/src/grammar.json` is clearly documented as the canonical grammar in `overview-plan.md` and this task file.  
 ## Phase 1 – Infrastructure & "Tracer Bullet"
+**Task 0.2 Confirmation:**
+
+- `grammar.json` verified: rules cover primitives (e.g. `cube()` via `module_call`), transforms (`translate`/`rotate`/`scale` via `transform_chain`), booleans (`union_block`, `difference`/`intersection` via `module_call`), control flow (`for_block`/`if_block`), advanced (`module_item`/`function_item`/`include_statement`/`use_statement`).
+
+- Builds successfully: `src/parser.c` generated (implied by `bindings/rust/build.rs`), `tree_sitter/` setup present.
+
+- Rust bindings confirmed: `bindings/rust/lib.rs` exports `language()` function loading the grammar; includes `test_can_load_grammar()`.
+
+- No setup needed for Phase 1; integration ready.
+
+- Files readable; grammar.json (~2279 formatted lines) is canonical JSON data.
 
 ### Task 1.1 – Workspace & Crate Setup 
 
@@ -74,6 +85,7 @@ Initialize the Cargo workspace and core Rust crates from scratch, with proper de
      - `libs/openscad-eval`  
      - `libs/manifold-rs`  
      - `libs/wasm`  
+     - `libs/openscad-lsp`  
 
 2. **Create `libs/manifold-rs`**  
    - Create crate structure:  
@@ -154,8 +166,8 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 **Acceptance Criteria**
 
 - `pnpm dev` in `apps/playground/` starts without runtime errors.  
-- A stub pipeline can send dummy geometry buffers from the worker to the main thread and render a simple mesh (e.g. a hard-coded triangle).  
-- TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly.
+- The worker loads the **real** `libs/wasm` bundle built via `../build-wasm.js` (Docker) and calls an exported function that returns geometry buffers (initially a trivial constant mesh such as a single triangle), with **no mocked WASM modules** in TypeScript.  
+- TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly (zero lint errors).
 
 ---
 
@@ -192,31 +204,51 @@ Build `libs/wasm` (and any other `wasm32-unknown-unknown` artifacts) entirely in
 
 ---
 
-### Task 1.4 – Parser Infrastructure (Rust/WASM) 
+### Task 1.4 – Parser Infrastructure & Language Server (libs/openscad-lsp) 
 
 **Goal**  
-Wire the Rust `libs/openscad-parser` (Tree-sitter bindings) through the Rust/WASM pipeline so that parsing occurs entirely inside Rust, and the Playground never imports `web-tree-sitter` or parser WASM directly.
+Provide a parse-only and structural analysis pipeline for OpenSCAD using `libs/openscad-parser`, and expose it via a Rust language server built with `tower-lsp`, without duplicating parser wiring in other crates.
 
 **Steps**
 
-1. **Parser Crate Wiring**  
-   - Confirm that `libs/openscad-parser` is part of the Cargo workspace and that its Rust bindings under `libs/openscad-parser/bindings/rust/lib.rs` use `src/grammar.json` when generating the Tree-sitter parser.  
-   - Ensure `libs/openscad-ast` consumes the parser API to build typed AST nodes from CST.  
-   - Ensure no `web-tree-sitter` or `tree-sitter.wasm` assets are referenced from `apps/playground`.
+1. **Create `libs/openscad-lsp` crate**  
+   - Crate structure:  
+     - `src/lib.rs` (public API for analysis).  
+     - `src/server/mod.rs` (tower-lsp server setup).  
+     - `src/document_store.rs` (in-memory text + versioning).  
+     - `src/parser.rs` (Tree-sitter integration using `libs/openscad-parser` bindings).  
+   - Add dependencies:  
+     - `tower-lsp`.  
+     - `tokio` (for async runtime).  
+     - `libs/openscad-parser` as a workspace dependency.
 
-2. **WASM Entry Point for Parsing**  
-   - In `libs/wasm`, expose a small synchronous or async Rust function (e.g. `parse_only(source: &str) -> Result<(), Vec<Diagnostic>>` or similar) that:  
-     - Calls into `libs/openscad-parser` (via `openscad-ast` where appropriate) to parse the source into CST/AST.  
-     - Returns either success or a list of diagnostics describing parse errors.
+2. **Tree-sitter Integration**  
+   - Use `libs/openscad-parser/src/grammar.json` and the Rust bindings in `bindings/rust` (for example a `language()` function) to create and maintain a `tree_sitter::Parser` and `Tree`.  
+   - Implement incremental parsing by applying `tree_sitter::InputEdit` on document changes and reparsing only affected regions.  
+   - Add helpers to map positions between LSP `Position` and byte offsets/points used by Tree-sitter.
 
-3. **Worker Integration (Rust-Backed Parsing)**  
-   - In the Playground worker, call the `parse_only` (or equivalent) function exported from the `libs/wasm` bundle as the **only** way to parse OpenSCAD source.  
-   - Do not load or initialize `web-tree-sitter` in TypeScript.
+3. **High-Level Analysis API (parse-only)**  
+   - Implement an internal API (for example `analyze_source(source: &str) -> Vec<Diagnostic>`) that:  
+     - Parses the source with Tree-sitter.  
+     - Collects syntax errors and basic structural issues into the shared `Diagnostic` type.  
+     - Does **not** expose raw `tree_sitter::Node` values to callers; return only domain types (diagnostics, symbols, spans).
+
+4. **tower-lsp Server Wiring**  
+   - Implement an LSP server that:  
+     - Handles `initialize`, `initialized`, `shutdown`, and `textDocument/*` requests.  
+     - On `textDocument/didOpen` and `textDocument/didChange`, updates the document store and parser tree, then publishes diagnostics from `analyze_source`.  
+   - Provide a thin `main.rs` (either in this crate or an `apps/openscad-lsp` binary) that starts the server over stdio.
+
+5. **Parser Reuse Policy**  
+   - Document that **all** IDE/editor-facing “parse-only” and structural analysis must go through `libs/openscad-lsp`.  
+   - `libs/wasm` continues to own the runtime pipeline (`compile_and_render` etc.), but does **not** expose a separate `parse_only` entry point; avoid duplicating parser wiring there.  
+   - Ensure the Playground and any external tools do **not** use `web-tree-sitter`; all parsing is Rust-based via `libs/openscad-parser`.
 
 **Acceptance Criteria**
 
-- Given a basic OpenSCAD snippet (e.g. `cube(10);`), the worker can call the `libs/wasm` parse entry point and receive either success or structured diagnostics.  
-- No `web-tree-sitter` dependency or Tree-sitter WASM assets exist in the Playground; parsing happens entirely in Rust/WASM through `libs/wasm`.
+- A minimal `openscad-lsp` server binary can be launched (for example from an editor or CLI client) and responds correctly to `initialize` and `shutdown`.  
+- Given a basic OpenSCAD snippet (e.g. `cube(10);`), the server publishes either zero diagnostics or a well-formed list of syntax diagnostics.  
+- Parser integration lives only in `libs/openscad-parser` and `libs/openscad-lsp`; no other crate re-implements Tree-sitter wiring or depends on `web-tree-sitter`.
 
 ---
 
@@ -300,9 +332,8 @@ Ensure all future `libs/manifold-rs` implementations follow a consistent, mechan
 
 **Acceptance Criteria**
 
-- Code reviews for new `libs/manifold-rs` features explicitly check against these guidelines (half-edge representation, parallelism, safety, error handling, testing, robust predicates).  
+- Code reviews for new `libs/manifold-rs` features explicitly check against these guidelines (half-edge representation, parallelism, safety, error handling, testing, robust predicates).
 - New public boolean APIs in `libs/manifold-rs` (`boolean`, `union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
-
 ### Task 2.1 – Manifold-RS Cube Primitive (TDD)
 
 **Goal**  

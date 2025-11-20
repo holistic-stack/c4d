@@ -1,0 +1,66 @@
+==================
+Variable Assignment
+==================
+
+x = 10;
+y = "hello";
+z = true;
+
+---
+
+(source_file
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (integer)))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (string)))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (boolean))))
+
+==================
+Module Definition
+==================
+
+module my_cube(size) {
+    cube(size);
+}
+
+---
+
+(source_file
+  (module_item
+    name: (identifier)
+    parameters: (parameters
+      (parameter
+        (identifier)))
+    body: (union_block
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (identifier)))))))
+
+==================
+Function Definition
+==================
+
+function add(a, b) = a + b;
+
+---
+
+(source_file
+  (function_item
+    name: (identifier)
+    parameters: (parameters
+      (parameter
+        (identifier))
+      (parameter
+        (identifier)))
+    (binary_expression
+      left: (identifier)
+      right: (identifier))))

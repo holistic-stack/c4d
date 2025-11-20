@@ -1,0 +1,121 @@
+==================
+List Comprehensions
+==================
+
+l1 = [for (i = [0:10]) i];
+l2 = [for (i = [0:10]) if (i % 2 == 0) i];
+l3 = [for (i = [0:10]) let (x = i*2) x];
+
+---
+
+(source_file
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (list
+        (list_comprehension
+          (for_clause
+            (assignments
+              (assignment
+                name: (identifier)
+                value: (range
+                  start: (integer)
+                  end: (integer))))
+            (identifier))))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (list
+        (list_comprehension
+          (for_clause
+            (assignments
+              (assignment
+                name: (identifier)
+                value: (range
+                  start: (integer)
+                  end: (integer))))
+            (list_comprehension
+              (if_clause
+                condition: (parenthesized_expression
+                  (binary_expression
+                    left: (binary_expression
+                      left: (identifier)
+                      right: (integer))
+                    right: (integer)))
+                consequence: (identifier))))))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (list
+        (list_comprehension
+          (for_clause
+            (assignments
+              (assignment
+                name: (identifier)
+                value: (range
+                  start: (integer)
+                  end: (integer))))
+            (let_expression
+              (assignments
+                (assignment
+                  name: (identifier)
+                  value: (binary_expression
+                    left: (identifier)
+                    right: (integer))))
+              body: (identifier))))))))
+
+==================
+Intersection For
+==================
+
+intersection_for(i = [0:5]) {
+    translate([i, 0, 0]) cube(10);
+}
+
+---
+
+(source_file
+  (intersection_for_block
+    (assignments
+      (assignment
+        name: (identifier)
+        value: (range
+          start: (integer)
+          end: (integer))))
+    body: (union_block
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (list
+              (identifier)
+              (integer)
+              (integer))))
+        (transform_chain
+          (module_call
+            name: (identifier)
+            arguments: (arguments
+              (integer))))))))
+
+==================
+Let Block
+==================
+
+let (x = 10) {
+    cube(x);
+}
+
+---
+
+(source_file
+  (let_block
+    (assignments
+      (assignment
+        name: (identifier)
+        value: (integer)))
+    body: (union_block
+      (transform_chain
+        (module_call
+          name: (identifier)
+          arguments: (arguments
+            (identifier)))))))

@@ -112,6 +112,10 @@
           "name": "assert_statement"
         },
         {
+          "type": "SYMBOL",
+          "name": "echo_statement"
+        },
+        {
           "type": "STRING",
           "value": ";"
         }
@@ -1926,6 +1930,31 @@
         }
       ]
     },
+    "echo_statement": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "echo"
+        },
+        {
+          "type": "FIELD",
+          "name": "arguments",
+          "content": {
+            "type": "SYMBOL",
+            "name": "arguments"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "statement",
+          "content": {
+            "type": "SYMBOL",
+            "name": "statement"
+          }
+        }
+      ]
+    },
     "assert_expression": {
       "type": "PREC_RIGHT",
       "value": 0,
@@ -2274,6 +2303,5 @@
     "expression",
     "number",
     "statement"
-  ],
-  "reserved": {}
+  ]
 }

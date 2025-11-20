@@ -1,0 +1,94 @@
+==================
+Modifiers
+==================
+
+*cube(10);
+!sphere(10);
+#cylinder(10);
+%square(10);
+
+---
+
+(source_file
+  (transform_chain
+    (modifier)
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (integer))))
+  (transform_chain
+    (modifier)
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (integer))))
+  (transform_chain
+    (modifier)
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (integer))))
+  (transform_chain
+    (modifier)
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (integer)))))
+
+==================
+2D Primitives
+==================
+
+circle(r=10);
+square([10, 20], center=true);
+polygon(points=[[0,0], [10,0], [0,10]]);
+text("OpenSCAD");
+projection(cut=true) cube(10);
+
+---
+
+(source_file
+  (transform_chain
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (assignment
+          name: (identifier)
+          value: (integer)))))
+  (transform_chain
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (list
+          (integer)
+          (integer))
+        (assignment
+          name: (identifier)
+          value: (boolean)))))
+  (transform_chain
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (assignment
+          name: (identifier)
+          value: (list
+            (list (integer) (integer))
+            (list (integer) (integer))
+            (list (integer) (integer)))))))
+  (transform_chain
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (string))))
+  (transform_chain
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (assignment
+          name: (identifier)
+          value: (boolean))))
+    (transform_chain
+      (module_call
+        name: (identifier)
+        arguments: (arguments
+          (integer))))))

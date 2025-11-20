@@ -1,0 +1,108 @@
+==================
+Special Variables
+==================
+
+$fn = 100;
+$fa = 1;
+$fs = 0.1;
+cube(10, $fn=50);
+
+---
+
+(source_file
+  (var_declaration
+    (assignment
+      name: (special_variable (identifier))
+      value: (integer)))
+  (var_declaration
+    (assignment
+      name: (special_variable (identifier))
+      value: (integer)))
+  (var_declaration
+    (assignment
+      name: (special_variable (identifier))
+      value: (float)))
+  (transform_chain
+    (module_call
+      name: (identifier)
+      arguments: (arguments
+        (integer)
+        (assignment
+          name: (special_variable (identifier))
+          value: (integer))))))
+
+==================
+Math Functions
+==================
+
+a = sin(90);
+b = sqrt(16);
+c = pow(2, 3);
+d = concat([1], [2]);
+
+---
+
+(source_file
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (integer)))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (integer)))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (integer)
+          (integer)))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (list (integer))
+          (list (integer)))))))
+
+==================
+Type Test Functions
+==================
+
+b = is_undef(undef);
+n = is_num(10);
+s = is_string("hello");
+
+---
+
+(source_file
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (undef)))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (integer)))))
+  (var_declaration
+    (assignment
+      name: (identifier)
+      value: (function_call
+        name: (identifier)
+        arguments: (arguments
+          (string))))))
