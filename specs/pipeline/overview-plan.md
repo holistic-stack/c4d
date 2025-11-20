@@ -344,6 +344,11 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
 - **WASM Parallelism**  
   - Where browser support allows, enable WASM threads + shared memory so `rayon` can run in parallel inside `manifold-rs` for heavy kernels.
 
+- **Dockerized WASM Build**  
+  - All `libs/wasm` builds (and any other `wasm32-unknown-unknown` artifacts) are performed **inside Docker**, using a pinned Rust image with the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` installed.  
+  - The root `build-wasm.js` script and `apps/playground` pnpm scripts (e.g. `pnpm build:wasm`) **wrap `docker build` / `docker run`**, so developers do not need a local Rust/WASM toolchain; Docker Desktop is sufficient on Windows/macOS/Linux.  
+  - Dockerfiles use multi-stage builds and cache `Cargo.toml`/`Cargo.lock` dependency layers to keep Rust+WASM builds fast in CI and locally.
+
 ### 5.3 Documentation & Project Hygiene
 
 - Keep `overview-plan.md` and `tasks.md` up to date with implementation changes.  
@@ -380,7 +385,7 @@ All new work should keep this overview in sync, and `tasks.md` should always ref
 
 - Use GitHub Actions (or an equivalent CI system) to run on every PR:
   - `cargo fmt`, `cargo clippy`, and `cargo test` for all crates.  
-  - `wasm-pack test --headless --chrome` for WASM targets.  
+  - WASM tests (e.g. `wasm-pack test --headless --chrome` for `libs/wasm` or related crates) run **inside the same Dockerized Rust+WASM image** used for builds, not directly on the CI host.  
   - Playwright end-to-end tests for the Playground.  
   - Golden regression tests and periodic fuzz tests (at least nightly).
 - Treat failing CI as a blocker; update this plan and `tasks.md` alongside behavioural changes.

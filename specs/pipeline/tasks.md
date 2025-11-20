@@ -47,7 +47,7 @@ Confirm and document that `libs/manifold-rs` will be a direct port of the local 
 ### Task 0.2 – Confirm Tree-sitter Grammar Integration
 
 **Goal**  
-Confirm that `libs/openscad-parser/src/grammar.json` is the canonical Tree-sitter grammar for OpenSCAD and that it is correctly wired into the Rust parser crate.
+Confirm that `libs/openscad-parser` is the canonical Tree-sitter grammar for OpenSCAD and that it is correctly wired into the Rust parser crate.
 
 **Steps**
 
@@ -107,7 +107,7 @@ Initialize the Cargo workspace and core Rust crates from scratch, with proper de
    - In `src/lib.rs`:  
      - Initialize `console_error_panic_hook` in an `init` function called by JS in debug builds.  
      - Add a small placeholder export (e.g. `greet()`), to be replaced by real pipeline functions in later tasks.  
-   - Ensure the workspace builds for the `wasm32-unknown-unknown` target and, if using `rayon` on WASM, that appropriate thread/atomics features, bulk-memory, and linker flags are enabled for future WASM threads.
+   - Ensure the crate compiles for the `wasm32-unknown-unknown` target **inside a Dockerized Rust+WASM image** (see Task 1.3), and, if using `rayon` on WASM, that appropriate thread/atomics features, bulk-memory, and linker flags are enabled for future WASM threads.
 
 **Acceptance Criteria**
 
@@ -130,6 +130,7 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
    - Use Svelte 5 with SvelteKit, Vite 7, Vitest 4, TypeScript 5.9, ESLint 9, and plain `three` (no Svelte wrapper library).  
    - Enable strict TypeScript mode.  
    - Enforce `kebab-case` for TypeScript file and folder names (e.g. `mesh-wrapper.ts`, `pipeline.worker.ts`).  
+   - Add a `build:wasm` script to `package.json` that runs `node ../build-wasm.js`, which in turn uses Docker to build the `libs/wasm` bundle.
 
 2. **Web Worker for Pipeline**  
    - Create `src/worker/pipeline.worker.ts`.  
@@ -155,6 +156,39 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 - `pnpm dev` in `apps/playground/` starts without runtime errors.  
 - A stub pipeline can send dummy geometry buffers from the worker to the main thread and render a simple mesh (e.g. a hard-coded triangle).  
 - TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly.
+
+---
+
+### Task 1.3 – Dockerized WASM Build Pipeline
+
+**Goal**  
+Build `libs/wasm` (and any other `wasm32-unknown-unknown` artifacts) entirely inside Docker, so developers and CI do not require a local Rust/WASM toolchain.
+
+**Steps**
+
+1. **Rust+WASM Docker Image**  
+   - Create a Dockerfile at the workspace root (or under a `docker/` folder) that:  
+     - Uses a pinned `rust:X.Y` base image.  
+     - Installs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`.  
+     - Copies `Cargo.toml` / `Cargo.lock`, runs `cargo fetch` to warm dependency caches.  
+     - Copies the full workspace source and builds `libs/wasm` for `wasm32-unknown-unknown` in release mode.  
+     - Runs `wasm-bindgen` to produce JS/TS bindings and `.wasm` output into an `/out` directory.
+
+2. **build-wasm.js Wrapper**  
+   - Implement or update `build-wasm.js` at the workspace root so that it:  
+     - Invokes `docker build` (and optionally `docker run` / `docker cp`) using the Dockerfile above to produce the WASM artifacts.  
+     - Copies the generated `.wasm` and JS/TS glue files from the container `/out` directory into a deterministic location (for example `libs/wasm/pkg` or an `apps/playground/static/wasm` folder).  
+     - Does **not** call `cargo` or `wasm-bindgen` directly on the host; all Rust/WASM compilation happens inside Docker.
+
+3. **Wire pnpm Scripts**  
+   - Ensure `apps/playground/package.json` defines a `build:wasm` script that runs `node ../build-wasm.js`.  
+   - Optionally, have the main app `build` script depend on `build:wasm` (e.g. `"build": "pnpm build:wasm && vite build"`) so that the WASM bundle is always up to date before SvelteKit/Vite compilation.
+
+**Acceptance Criteria**
+
+- Running `pnpm build:wasm` in `apps/playground/` builds `libs/wasm` via Docker on a clean Windows/macOS/Linux machine with only Docker Desktop and Node/pnpm installed.  
+- No local `rustup`, `cargo`, or `wasm-bindgen` installations are required on developer machines or CI hosts; all Rust/WASM toolchains live inside the Docker image.  
+- The generated `.wasm` and JS/TS glue files are written into a stable location that the SvelteKit/Vite build can import.
 
 ---
 
