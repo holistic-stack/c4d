@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "config",
+    "libs/openscad-parser",
+    "libs/openscad-ast",
+    "libs/openscad-eval",
+    "libs/manifold-rs",
+    "libs/wasm",
+    "libs/openscad-lsp"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+config = { path = "config" }
+console_error_panic_hook = "0.1"
+glam = { version = "0.27", features = ["serde"] }
+rayon = "1.10"
+robust = "0.2"
+stacker = "0.1"
+thiserror = "1.0"
+tokio = { version = "1.37", features = ["rt", "macros", "io-std"] }
+tower-lsp = "0.20"
+tree-sitter = "0.25"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }

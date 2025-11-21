@@ -1,0 +1,15 @@
+[package]
+name = "openscad-lsp"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+name = "openscad_lsp"
+
+[dependencies]
+config.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower-lsp.workspace = true
+tree-sitter.workspace = true
+tree-sitter-openscad-parser = { path = "../openscad-parser", package = "tree-sitter-openscad-parser" }

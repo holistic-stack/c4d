@@ -1,0 +1,9 @@
+[package]
+name = "openscad-ast"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+config.workspace = true
+tree-sitter.workspace = true
+tree-sitter-openscad-parser = { path = "../openscad-parser" }

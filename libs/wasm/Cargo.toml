@@ -1,0 +1,15 @@
+[package]
+name = "wasm"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+config.workspace = true
+console_error_panic_hook.workspace = true
+manifold-rs = { path = "../manifold-rs" }
+openscad-ast = { path = "../openscad-ast" }
+openscad-eval = { path = "../openscad-eval" }
+wasm-bindgen.workspace = true

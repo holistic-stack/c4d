@@ -1,0 +1,14 @@
+[package]
+name = "manifold-rs"
+version = "0.1.0"
+edition.workspace = true
+description = "Core geometry kernel components for the Rust OpenSCAD pipeline"
+license = "MIT"
+
+[dependencies]
+config.workspace = true
+glam.workspace = true
+openscad-ast = { path = "../openscad-ast" }
+openscad-eval = { path = "../openscad-eval" }
+thiserror.workspace = true
+robust.workspace = true

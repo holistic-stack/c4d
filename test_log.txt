@@ -1,0 +1,43 @@
+warning: unexpected `cfg` condition value: `upstream-rust-tests`
+  --> libs\openscad-parser\bindings\rust\lib.rs:44:17
+   |
+44 | #[cfg(all(test, feature = "upstream-rust-tests"))]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove the condition
+   |
+   = note: no expected values for `feature`
+   = help: consider adding `upstream-rust-tests` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: `tree-sitter-openscad-parser` (lib) generated 1 warning
+   Compiling openscad-lsp v0.1.0 (C:\Users\luciano\git\rust-openscad\libs\openscad-lsp)
+error[E0428]: the name `tests` is defined multiple times
+  --> libs\openscad-lsp\src\parser.rs:48:1
+   |
+23 | mod tests {
+   | --------- previous definition of the module `tests` here
+...
+48 | mod tests {
+   | ^^^^^^^^^ `tests` redefined here
+   |
+   = note: `tests` must be defined only once in the type namespace of this module
+
+error[E0716]: temporary value dropped while borrowed
+  --> libs\openscad-lsp\src\parser.rs:36:20
+   |
+36 |         let root = tree.unwrap().root_node();
+   |                    ^^^^^^^^^^^^^            - temporary value is freed at the end of this statement
+   |                    |
+   |                    creates a temporary value which is freed while still in use
+37 |         assert!(!root.has_error());
+   |                  ---- borrow later used here
+   |
+help: consider using a `let` binding to create a longer lived value
+   |
+36 ~         let binding = tree.unwrap();
+37 ~         let root = binding.root_node();
+   |
+
+Some errors have detailed explanations: E0428, E0716.
+For more information about an error, try `rustc --explain E0428`.
+error: could not compile `openscad-lsp` (lib test) due to 2 previous errors

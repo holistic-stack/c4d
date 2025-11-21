@@ -127,6 +127,14 @@ Initialize the Cargo workspace and core Rust crates from scratch, with proper de
 - `cargo test` (with initial no-op tests) succeeds for all new crates.  
 - Crate dependency graph matches the architecture in `overview-plan.md` (no unexpected cycles).
 
+**Task 1.1 Status:**
+
+- Workspace members added for `config`, `libs/openscad-parser`, `libs/openscad-ast`, `libs/openscad-eval`, `libs/manifold-rs`, `libs/wasm`, and `libs/openscad-lsp`.  
+- Core crates scaffolded with SRP modules (`mod.rs` + `tests.rs`) and documented public APIs referencing centralized `config` constants.  
+- `libs/wasm` exposes a panic hook initializer and a minimal `compile_and_count_nodes` pipeline stub wired into `openscad-eval`.  
+- `openscad-lsp` provides a stdio server binary, in-memory document store, and a minimal parser stub sufficient for end-to-end testing.  
+- `cargo fmt` and `cargo test` at the workspace root both succeed.
+
 ---
 
 ### Task 1.2 – Playground Setup (Svelte + Three.js + Worker) 
@@ -170,8 +178,9 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 - TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly (zero lint errors).
 
 **Task 1.2 Current Status:**  
-- `apps/playground` already has a minimal SvelteKit project bootstrapped under `apps/playground` (Three.js scene and worker wiring are not implemented yet).  
-- Three.js setup, Web Worker integration, and WASM/`manifold-rs` geometry preview are still pending.
+- `apps/playground` has a SvelteKit project with Three.js scene manager, Web Worker, and WASM wrapper implemented.
+- `pnpm check` and `pnpm build` pass.
+- Integration with `libs/wasm` via Dockerized build is verified.
 
 ---
 
@@ -205,6 +214,11 @@ Build `libs/wasm` (and any other `wasm32-unknown-unknown` artifacts) entirely in
 - Running `pnpm build:wasm` in `apps/playground/` builds `libs/wasm` via Docker on a clean Windows/macOS/Linux machine with only Docker Desktop and Node/pnpm installed.  
 - No local `rustup`, `cargo`, or `wasm-bindgen` installations are required on developer machines or CI hosts; all Rust/WASM toolchains live inside the Docker image.  
 - The generated `.wasm` and JS/TS glue files are written into a stable location that the SvelteKit/Vite build can import.
+
+**Task 1.3 Status:**
+- Dockerfile and `build-wasm.js` implemented.
+- `pnpm build:wasm` successfully builds `libs/wasm` inside Docker and copies artifacts to `libs/wasm/pkg`.
+- `apps/playground` consumes these artifacts via `$wasm` alias.
 
 ---
 
