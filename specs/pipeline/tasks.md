@@ -150,12 +150,12 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
    - Use Svelte 5 with SvelteKit, Vite 7, Vitest 4, TypeScript 5.9, ESLint 9, and plain `three` (no Svelte wrapper library).  
    - Enable strict TypeScript mode.  
    - Enforce `kebab-case` for TypeScript file and folder names (e.g. `mesh-wrapper.ts`, `pipeline.worker.ts`).  
-   - Add a `build:wasm` script to `package.json` that runs `node ../build-wasm.js`, which in turn uses Docker to build the `libs/wasm` bundle.
+   - Add a `build:wasm` script to `package.json` that runs `../scripts/build-wasm.sh`, which drives the local Rust+wasm-bindgen toolchain.
 
 2. **Web Worker for Pipeline**  
    - Create `src/worker/pipeline.worker.ts`.  
    - Responsibilities:  
-     - Load the actual WASM bundle produced from `libs/wasm` (built via `../build-wasm.js`), not a mock module.  
+     - Load the actual WASM bundle produced from `libs/wasm` (built via `../scripts/build-wasm.sh`), not a mock module.  
      - Expose a message protocol for `compile(source: string)`.  
      - Forward diagnostics and mesh handles back to the main thread.
 
@@ -174,50 +174,45 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 **Acceptance Criteria**
 
 - `pnpm dev` in `apps/playground/` starts without runtime errors.  
-- The worker loads the **real** `libs/wasm` bundle built via `../build-wasm.js` (Docker) and calls an exported function that returns geometry buffers (initially a trivial constant mesh such as a single triangle), with **no mocked WASM modules** in TypeScript.  
+- The worker loads the **real** `libs/wasm` bundle built via `../scripts/build-wasm.sh` and calls an exported function that returns geometry buffers (initially a trivial constant mesh such as a single triangle), with **no mocked WASM modules** in TypeScript.  
 - TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly (zero lint errors).
 
 **Task 1.2 Current Status:**  
 - `apps/playground` has a SvelteKit project with Three.js scene manager, Web Worker, and WASM wrapper implemented.
 - `pnpm check` and `pnpm build` pass.
-- Integration with `libs/wasm` via Dockerized build is verified.
+- Integration with `libs/wasm` via the local `scripts/build-wasm.sh` workflow is verified.
 
 ---
 
-### Task 1.3 – Dockerized WASM Build Pipeline
+### Task 1.3 – Local WASM Build Pipeline
 
 **Goal**  
-Build `libs/wasm` (and any other `wasm32-unknown-unknown` artifacts) entirely inside Docker, so developers and CI do not require a local Rust/WASM toolchain.
+Build `libs/wasm` (and any other `wasm32-unknown-unknown` artifacts) locally using the Rust toolchain so developers can iterate without Docker.
 
 **Steps**
 
-1. **Rust+WASM Docker Image**  
-   - Create a Dockerfile at the workspace root (or under a `docker/` folder) that:  
-     - Uses a pinned `rust:X.Y` base image.  
-     - Installs the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`.  
-     - Copies `Cargo.toml` / `Cargo.lock`, runs `cargo fetch` to warm dependency caches.  
-     - Copies the full workspace source and builds `libs/wasm` for `wasm32-unknown-unknown` in release mode.  
-     - Runs `wasm-bindgen` to produce JS/TS bindings and `.wasm` output into an `/out` directory.
+1. **Use Local Rust Toolchain**  
+   - Install the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` locally (via `rustup` / `cargo install`).  
+   - Ensure `WASI_SDK_PATH` is set when cross-compiling C(++) dependencies so build scripts can find clang/llvm.  
+   - Build `libs/wasm` for the wasm target in release mode and run `wasm-bindgen` to emit artifacts into `libs/wasm/pkg`.
 
-2. **build-wasm.js Wrapper**  
-   - Implement or update `build-wasm.js` at the workspace root so that it:  
-     - Invokes `docker build` (and optionally `docker run` / `docker cp`) using the Dockerfile above to produce the WASM artifacts.  
-     - Copies the generated `.wasm` and JS/TS glue files from the container `/out` directory into a deterministic location (for example `libs/wasm/pkg` or an `apps/playground/static/wasm` folder).  
-     - Does **not** call `cargo` or `wasm-bindgen` directly on the host; all Rust/WASM compilation happens inside Docker.
+2. **`scripts/build-wasm.sh` Helper**  
+   - Provide a Bash script that encapsulates the steps above: installs targets, verifies `wasm-bindgen`, respects `WASI_SDK_PATH`, runs `cargo build`, and invokes `wasm-bindgen`.  
+   - The script writes JS/TS glue files and `.wasm` output into `libs/wasm/pkg`.
 
 3. **Wire pnpm Scripts**  
-   - Ensure `apps/playground/package.json` defines a `build:wasm` script that runs `node ../build-wasm.js`.  
+   - Ensure `apps/playground/package.json` defines a `build:wasm` script that runs `../scripts/build-wasm.sh`.  
    - Optionally, have the main app `build` script depend on `build:wasm` (e.g. `"build": "pnpm build:wasm && vite build"`) so that the WASM bundle is always up to date before SvelteKit/Vite compilation.
 
 **Acceptance Criteria**
 
-- Running `pnpm build:wasm` in `apps/playground/` builds `libs/wasm` via Docker on a clean Windows/macOS/Linux machine with only Docker Desktop and Node/pnpm installed.  
-- No local `rustup`, `cargo`, or `wasm-bindgen` installations are required on developer machines or CI hosts; all Rust/WASM toolchains live inside the Docker image.  
+- Running `pnpm build:wasm` in `apps/playground/` builds `libs/wasm` locally using the Rust toolchain (with optional WASI SDK).  
+- Developers need a local `rustup`, `cargo`, and `wasm-bindgen` installation; Docker is no longer required for wasm builds.  
 - The generated `.wasm` and JS/TS glue files are written into a stable location that the SvelteKit/Vite build can import.
 
 **Task 1.3 Status:**
-- Dockerfile and `build-wasm.js` implemented.
-- `pnpm build:wasm` successfully builds `libs/wasm` inside Docker and copies artifacts to `libs/wasm/pkg`.
+- `scripts/build-wasm.sh` implemented.
+- `pnpm build:wasm` successfully builds `libs/wasm` locally and copies artifacts to `libs/wasm/pkg`.
 - `apps/playground` consumes these artifacts via `$wasm` alias.
 
 ---

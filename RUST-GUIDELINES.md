@@ -115,7 +115,7 @@ project-root/
 │   ├── end-to-end-tests.rs
 │   └── performance-tests.rs
 ├── tools/                      # Development tools and scripts
-│   ├── build-wasm.js
+│   ├── scripts/build-wasm.sh
 │   └── release-helper.rs
 └── docs/                       # Documentation
     ├── api/

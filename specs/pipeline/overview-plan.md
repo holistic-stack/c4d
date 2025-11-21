@@ -370,10 +370,10 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
 - **WASM Parallelism**  
   - Where browser support allows, enable WASM threads + shared memory so `rayon` can run in parallel inside `manifold-rs` for heavy kernels.
 
-- **Dockerized WASM Build**  
-  - All `libs/wasm` builds (and any other `wasm32-unknown-unknown` artifacts) are performed **inside Docker**, using a pinned Rust image with the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` installed.  
-  - The root `build-wasm.js` script and `apps/playground` pnpm scripts (e.g. `pnpm build:wasm`) **wrap `docker build` / `docker run`**, so developers do not need a local Rust/WASM toolchain; Docker Desktop is sufficient on Windows/macOS/Linux.  
-  - Dockerfiles use multi-stage builds and cache `Cargo.toml`/`Cargo.lock` dependency layers to keep Rust+WASM builds fast in CI and locally.
+- **Local WASM Build**  
+  - All `libs/wasm` builds (and any other `wasm32-unknown-unknown` artifacts) run via the local Rust toolchain using `scripts/build-wasm.sh`.  
+  - The helper ensures the `wasm32-unknown-unknown` target and matching `wasm-bindgen` version are installed, respects `WASI_SDK_PATH`, and emits artifacts into `libs/wasm/pkg`.  
+  - `apps/playground` pnpm scripts (e.g. `pnpm build:wasm`) call the same helper so browser assets stay in sync.
 
 ### 5.3 Documentation & Project Hygiene
 

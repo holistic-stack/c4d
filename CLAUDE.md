@@ -35,7 +35,7 @@ cargo check
 ### WASM Build Commands
 ```bash
 # Build WASM package for playground (from workspace root)
-node build-wasm.js
+scripts/build-wasm.sh
 
 # Alternative: Use playground's build script
 cd playground && pnpm run build:wasm
@@ -188,11 +188,10 @@ struct Diagnostic {
 - WASM bundle: <2MB compressed after optimization
 
 ### WASM Build System
-The `build-wasm.js` script handles WASM compilation with:
-- Zig toolchain integration for C++ dependencies
+The `scripts/build-wasm.sh` helper handles WASM compilation with:
+- Local `rustup` target management (`wasm32-unknown-unknown`)
 - `wasm-bindgen` for JavaScript bindings
-- `wasm-opt` for bundle size optimization
-- Environment variables for WASI sysroot configuration
+- Optional WASI SDK environment variables for clang/llvm selection
 
 ### Testing Strategy
 - Unit tests: Each module has `tests.rs` with comprehensive coverage
