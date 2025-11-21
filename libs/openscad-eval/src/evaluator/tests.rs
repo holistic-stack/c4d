@@ -79,3 +79,17 @@ fn evaluate_invalid_cube_vector_reports_ast_error() {
         panic!("expected AST diagnostics error");
     }
 }
+
+#[test]
+fn evaluate_assignment_does_not_error() {
+    let evaluator = Evaluator::new(InMemoryFilesystem::default());
+    let nodes = evaluator.evaluate_source("$fn = 50;").expect("assignment parsed");
+    assert!(nodes.is_empty());
+}
+
+#[test]
+fn evaluate_multiple_assignments() {
+    let evaluator = Evaluator::new(InMemoryFilesystem::default());
+    let nodes = evaluator.evaluate_source("$fn = 50; $fa = 1;").expect("assignments parsed");
+    assert!(nodes.is_empty());
+}

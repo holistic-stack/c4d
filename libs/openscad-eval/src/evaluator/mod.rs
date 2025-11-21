@@ -11,6 +11,9 @@ use thiserror::Error;
 use crate::filesystem::FileSystem;
 use crate::ir::{GeometryNode, GeometryValidationError};
 use openscad_ast::{Diagnostic as AstDiagnostic, Statement};
+use self::context::EvaluationContext;
+
+pub mod context;
 
 /// Primary evaluator type parametrized over a filesystem implementation.
 ///
@@ -66,49 +69,38 @@ impl<F: FileSystem + Clone> Evaluator<F> {
             });
         }
 
-        ast_to_ir(&ast)
+        let mut context = EvaluationContext::default();
+        self.evaluate_statements(&ast, &mut context)
     }
-}
 
-/// Converts AST statements into IR geometry nodes.
-///
-/// The initial implementation supports only `Statement::Cube` nodes and
-/// delegates validation to `GeometryNode::cube`.
-///
-/// # Examples
-/// ```
-/// use glam::DVec3;
-/// use openscad_ast::{CubeSize, Span, Statement};
-/// use openscad_eval::ir::GeometryNode;
-/// use openscad_eval::evaluator::ast_to_ir;
-///
-/// let span = Span::new(0, 10).unwrap();
-/// let stmt = Statement::Cube {
-///     size: CubeSize::Vector([1.0, 2.0, 3.0]),
-///     center: Some(true),
-///     span,
-/// };
-/// let nodes = ast_to_ir(&[stmt]).unwrap();
-/// assert_eq!(nodes[0].size(), DVec3::new(1.0, 2.0, 3.0));
-/// ```
-pub fn ast_to_ir(statements: &[Statement]) -> Result<Vec<GeometryNode>, EvaluationError> {
-    let mut nodes = Vec::with_capacity(statements.len());
+    fn evaluate_statements(
+        &self,
+        statements: &[Statement],
+        context: &mut EvaluationContext,
+    ) -> Result<Vec<GeometryNode>, EvaluationError> {
+        let mut nodes = Vec::with_capacity(statements.len());
 
-    for statement in statements {
-        match statement {
-            Statement::Cube { size, center, span } => {
-                let vec = size.to_vec3();
-                let size_vec = DVec3::new(vec[0], vec[1], vec[2]);
-                // Use center from AST, defaulting to false if not specified
-                let center_value = center.unwrap_or(false);
-                let node = GeometryNode::cube(size_vec, center_value, *span)?;
-                nodes.push(node);
+        for statement in statements {
+            match statement {
+                Statement::Cube { size, center, span } => {
+                    let vec = size.to_vec3();
+                    let size_vec = DVec3::new(vec[0], vec[1], vec[2]);
+                    // Use center from AST, defaulting to false if not specified
+                    let center_value = center.unwrap_or(false);
+                    let node = GeometryNode::cube(size_vec, center_value, *span)?;
+                    nodes.push(node);
+                }
+                Statement::Assignment { name, value, .. } => {
+                    context.set_variable(name, *value);
+                }
             }
         }
-    }
 
-    Ok(nodes)
+        Ok(nodes)
+    }
 }
+
+// ast_to_ir was removed and integrated into Evaluator::evaluate_statements
 
 /// Errors produced by the evaluator.
 #[derive(Debug, Error, PartialEq)]

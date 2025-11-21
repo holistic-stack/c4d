@@ -35,6 +35,20 @@ pub enum Statement {
         /// Source span for error reporting.
         span: Span,
     },
+    /// A variable assignment.
+    ///
+    /// Examples:
+    /// - `$fn = 50;`
+    /// - `x = 10;`
+    Assignment {
+        /// The name of the variable being assigned.
+        name: String,
+        /// The value being assigned.
+        /// For Task 3.2 we only support scalar/numeric assignments.
+        value: f64,
+        /// Source span for error reporting.
+        span: Span,
+    },
 }
 
 /// Size specification for a cube.
@@ -112,6 +126,7 @@ mod tests {
                 assert_eq!(size, CubeSize::Scalar(10.0));
                 assert_eq!(center, None);
             }
+            _ => panic!("Expected Cube"),
         }
     }
 }

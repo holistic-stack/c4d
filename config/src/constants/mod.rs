@@ -44,6 +44,16 @@ pub const STACKER_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
 /// ```
 pub const MAX_LSP_DOCUMENTS: usize = 64;
 
+/// Default value for the special variable $fn (number of fragments).
+/// 0 means use $fa and $fs.
+pub const DEFAULT_FN: u32 = 0;
+
+/// Default value for the special variable $fa (minimum angle in degrees).
+pub const DEFAULT_FA: f64 = 12.0;
+
+/// Default value for the special variable $fs (minimum size of a fragment).
+pub const DEFAULT_FS: f64 = 2.0;
+
 /// Immutable snapshot of global configuration settings that can be shared
 /// between crates.
 ///
