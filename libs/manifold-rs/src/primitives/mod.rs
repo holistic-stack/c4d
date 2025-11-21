@@ -4,3 +4,4 @@
 /// using the half-edge manifold representation.
 
 pub mod cube;
+pub mod sphere;

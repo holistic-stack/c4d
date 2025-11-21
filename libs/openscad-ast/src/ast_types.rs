@@ -35,6 +35,23 @@ pub enum Statement {
         /// Source span for error reporting.
         span: Span,
     },
+    /// A sphere primitive.
+    ///
+    /// Examples:
+    /// - `sphere(10);` → radius=10, fa/fs/fn=None
+    /// - `sphere(r=10, $fn=100);` → radius=10
+    Sphere {
+        /// The radius of the sphere.
+        radius: f64,
+        /// The resolution parameter $fa (minimum angle).
+        fa: Option<f64>,
+        /// The resolution parameter $fs (minimum size).
+        fs: Option<f64>,
+        /// The resolution parameter $fn (number of fragments).
+        fn_: Option<u32>,
+        /// Source span for error reporting.
+        span: Span,
+    },
     /// A variable assignment.
     ///
     /// Examples:
@@ -47,6 +64,33 @@ pub enum Statement {
         /// For Task 3.2 we only support scalar/numeric assignments.
         value: f64,
         /// Source span for error reporting.
+        span: Span,
+    },
+    /// A transformation (translate, rotate, scale).
+    Translate {
+        /// Translation vector.
+        vector: [f64; 3],
+        /// The statement being transformed.
+        child: Box<Statement>,
+        /// Source span.
+        span: Span,
+    },
+    /// A rotation transformation.
+    Rotate {
+        /// Rotation vector (degrees).
+        vector: [f64; 3],
+        /// The statement being transformed.
+        child: Box<Statement>,
+        /// Source span.
+        span: Span,
+    },
+    /// A scaling transformation.
+    Scale {
+        /// Scale vector.
+        vector: [f64; 3],
+        /// The statement being transformed.
+        child: Box<Statement>,
+        /// Source span.
         span: Span,
     },
 }

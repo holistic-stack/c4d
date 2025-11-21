@@ -46,13 +46,51 @@ fn evaluate_cube_vector_literal() {
 /// ```
 /// use openscad_eval::{evaluator::Evaluator, filesystem::InMemoryFilesystem};
 /// let evaluator = Evaluator::new(InMemoryFilesystem::default());
-/// assert!(evaluator.evaluate_source("sphere(1);").is_err());
+/// assert!(evaluator.evaluate_source("cylinder(1);").is_err());
 /// ```
 #[test]
 fn evaluate_unsupported_source() {
     let evaluator = Evaluator::new(InMemoryFilesystem::default());
-    let err = evaluator.evaluate_source("sphere(1);").unwrap_err();
+    // sphere is now supported, so we use cylinder
+    let err = evaluator.evaluate_source("cylinder(1);").unwrap_err();
     assert!(matches!(err, EvaluationError::UnsupportedSource { .. }));
+}
+
+#[test]
+fn evaluate_sphere_literal() {
+    let evaluator = Evaluator::new(InMemoryFilesystem::default());
+    let nodes = evaluator.evaluate_source("sphere(1);").expect("sphere parsed");
+    assert_eq!(nodes.len(), 1);
+}
+
+#[test]
+fn evaluate_translate() {
+    let evaluator = Evaluator::new(InMemoryFilesystem::default());
+    let nodes = evaluator.evaluate_source("translate([10,0,0]) cube(1);").expect("translate parsed");
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+        GeometryNode::Transform { matrix, child, .. } => {
+            // Translation matrix should be:
+            // 1 0 0 10
+            // 0 1 0 0
+            // 0 0 1 0
+            // 0 0 0 1
+            let cols = matrix.to_cols_array_2d();
+            // glam stores column-major.
+            // col 3 is translation vector.
+            assert_eq!(cols[3][0], 10.0);
+            assert_eq!(cols[3][1], 0.0);
+            assert_eq!(cols[3][2], 0.0);
+
+            match &**child {
+                GeometryNode::Cube { size, .. } => {
+                    assert_eq!(size.x, 1.0);
+                }
+                _ => panic!("Expected Cube child"),
+            }
+        }
+        _ => panic!("Expected Transform node"),
+    }
 }
 
 /// Ensures AST diagnostics are surfaced as explicit evaluator errors.

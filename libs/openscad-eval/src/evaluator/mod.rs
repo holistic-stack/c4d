@@ -4,7 +4,7 @@
 //! 1.1 vertical slice expectations while leaving room for future expansion.
 
 use config::constants::STACKER_STACK_SIZE_BYTES;
-use glam::DVec3;
+use glam::{DMat4, DVec3};
 use stacker::maybe_grow;
 use thiserror::Error;
 
@@ -93,10 +93,98 @@ impl<F: FileSystem + Clone> Evaluator<F> {
                 Statement::Assignment { name, value, .. } => {
                     context.set_variable(name, *value);
                 }
+                Statement::Sphere { radius, fa, fs, fn_, span } => {
+                    // Update context with local variables if present
+                    // (OpenSCAD scoping rules are complex, but for primitives, params override globals)
+                    // For now, we assume $fn/$fa/$fs passed as args should influence the resolution calculation.
+                    // However, the current EvaluationContext manages global state.
+                    // For primitives, we should probably compute the effective resolution locally
+                    // or temporarily override the context.
+                    // Since the context is mutable, we can override and restore, but `evaluate_statements` is sequential.
+                    // Primitives are terminals in this simple evaluator.
+
+                    // Better approach: use context to resolve segments count.
+                    // OpenSCAD logic for fragments:
+                    // if $fn > 0: segments = $fn (if >= 3)
+                    // else: segments = ceil(max(min(360/$fa, r*2*PI/$fs), 5))
+
+                    let effective_fn = fn_.unwrap_or(context.get_fn());
+                    let effective_fa = fa.unwrap_or(context.get_fa());
+                    let effective_fs = fs.unwrap_or(context.get_fs());
+
+                    let segments = calculate_segments(*radius, effective_fn, effective_fa, effective_fs);
+
+                    let node = GeometryNode::sphere(*radius, segments, *span)?;
+                    nodes.push(node);
+                }
+                Statement::Translate { vector, child, span } => {
+                    let translation = DVec3::from_array(*vector);
+                    let matrix = DMat4::from_translation(translation);
+
+                    let child_stmt = child.as_ref().clone();
+                    let child_nodes = self.evaluate_statements(&[child_stmt], context)?;
+                    for child_node in child_nodes {
+                        nodes.push(GeometryNode::Transform {
+                            matrix,
+                            child: Box::new(child_node),
+                            span: *span,
+                        });
+                    }
+                }
+                Statement::Rotate { vector, child, span } => {
+                    // OpenSCAD rotate is Euler angles in degrees.
+                    // Order: X then Y then Z (if vector).
+                    let degs = DVec3::from_array(*vector);
+                    let rads = DVec3::new(degs.x.to_radians(), degs.y.to_radians(), degs.z.to_radians());
+
+                    // Matrix multiplication order for column vectors (glam): M = Mz * My * Mx
+                    let rotation = DMat4::from_rotation_z(rads.z)
+                        * DMat4::from_rotation_y(rads.y)
+                        * DMat4::from_rotation_x(rads.x);
+
+                    let matrix = rotation;
+
+                    let child_stmt = child.as_ref().clone();
+                    let child_nodes = self.evaluate_statements(&[child_stmt], context)?;
+                    for child_node in child_nodes {
+                        nodes.push(GeometryNode::Transform {
+                            matrix,
+                            child: Box::new(child_node),
+                            span: *span,
+                        });
+                    }
+                }
+                Statement::Scale { vector, child, span } => {
+                    let scale = DVec3::from_array(*vector);
+                    let matrix = DMat4::from_scale(scale);
+
+                    let child_stmt = child.as_ref().clone();
+                    let child_nodes = self.evaluate_statements(&[child_stmt], context)?;
+                    for child_node in child_nodes {
+                        nodes.push(GeometryNode::Transform {
+                            matrix,
+                            child: Box::new(child_node),
+                            span: *span,
+                        });
+                    }
+                }
             }
         }
 
         Ok(nodes)
+    }
+}
+
+fn calculate_segments(radius: f64, fn_val: u32, fa_val: f64, fs_val: f64) -> u32 {
+    if fn_val > 0 {
+        if fn_val >= 3 { fn_val } else { 3 }
+    } else {
+        let segments_fa = if fa_val > 0.0 { 360.0 / fa_val } else { 0.0 };
+        let segments_fs = if fs_val > 0.0 { (radius * 2.0 * std::f64::consts::PI) / fs_val } else { 0.0 };
+
+        let segments = segments_fa.min(segments_fs);
+        let segments = segments.ceil() as u32;
+        if segments < 5 { 5 } else { segments }
     }
 }
 
