@@ -1,0 +1,278 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.20kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/rust:1.83
+#2 DONE 0.3s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 112B done
+#3 DONE 0.0s
+
+#4 [1/8] FROM docker.io/library/rust:1.83@sha256:a45bf1f5d9af0a23b26703b3500d70af1abff7f984a7abef5a104b42c02a292b
+#4 resolve docker.io/library/rust:1.83@sha256:a45bf1f5d9af0a23b26703b3500d70af1abff7f984a7abef5a104b42c02a292b 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 19.02kB 0.0s done
+#5 DONE 0.0s
+
+#6 [2/8] RUN rustup target add wasm32-unknown-unknown
+#6 CACHED
+
+#7 [3/8] RUN cargo install -f wasm-bindgen-cli --version 0.2.105
+#7 CACHED
+
+#8 [4/8] WORKDIR /app
+#8 CACHED
+
+#9 [5/8] COPY . .
+#9 DONE 0.1s
+
+#10 [6/8] RUN mkdir -p /out
+#10 DONE 0.4s
+
+#11 [7/8] RUN cargo build --release -p wasm --target wasm32-unknown-unknown
+#11 0.537     Updating crates.io index
+#11 0.744  Downloading crates ...
+#11 0.808   Downloaded stacker v0.1.22
+#11 0.831   Downloaded thiserror v1.0.69
+#11 0.842   Downloaded tree-sitter-language v0.1.5
+#11 0.861   Downloaded wasm-bindgen-macro v0.2.105
+#11 0.864   Downloaded rustversion v1.0.22
+#11 0.871   Downloaded streaming-iterator v0.1.9
+#11 0.874   Downloaded thiserror-impl v1.0.69
+#11 0.879   Downloaded wasm-bindgen-macro-support v0.2.105
+#11 0.884   Downloaded wasm-bindgen v0.2.105
+#11 0.889   Downloaded ar_archive_writer v0.2.0
+#11 0.893   Downloaded robust v0.2.3
+#11 0.896   Downloaded psm v0.1.28
+#11 0.906   Downloaded bumpalo v3.19.0
+#11 0.912   Downloaded tree-sitter v0.25.10
+#11 0.924   Downloaded object v0.32.2
+#11 0.969   Downloaded glam v0.27.0
+#11 0.997   Downloaded console_error_panic_hook v0.1.7
+#11 1.062    Compiling shlex v1.3.0
+#11 1.062    Compiling find-msvc-tools v0.1.5
+#11 1.062    Compiling memchr v2.7.6
+#11 1.063    Compiling unicode-ident v1.0.22
+#11 1.064    Compiling proc-macro2 v1.0.103
+#11 1.065    Compiling quote v1.0.42
+#11 1.066    Compiling serde_core v1.0.228
+#11 1.066    Compiling equivalent v1.0.2
+#11 1.068    Compiling hashbrown v0.16.1
+#11 1.068    Compiling serde_json v1.0.145
+#11 1.068    Compiling itoa v1.0.15
+#11 1.159    Compiling wasm-bindgen-shared v0.2.105
+#11 1.224    Compiling ryu v1.0.20
+#11 1.303    Compiling cc v1.2.46
+#11 1.351    Compiling serde v1.0.228
+#11 1.385    Compiling regex-syntax v0.8.8
+#11 1.404    Compiling rustversion v1.0.22
+#11 1.455    Compiling tree-sitter-language v0.1.5
+#11 1.515    Compiling streaming-iterator v0.1.9
+#11 1.528    Compiling cfg-if v1.0.4
+#11 1.596    Compiling libc v0.2.177
+#11 1.737    Compiling aho-corasick v1.1.4
+#11 1.804    Compiling object v0.32.2
+#11 1.988    Compiling indexmap v2.12.1
+#11 2.055    Compiling bumpalo v3.19.0
+#11 2.264    Compiling thiserror v1.0.69
+#11 2.452    Compiling syn v2.0.110
+#11 2.533    Compiling config v0.1.0 (/app/config)
+#11 2.731    Compiling wasm-bindgen v0.2.105
+#11 2.783    Compiling once_cell v1.21.3
+#11 2.960    Compiling robust v0.2.3
+#11 3.176    Compiling tree-sitter-openscad-parser v0.1.0 (/app/libs/openscad-parser)
+#11 3.176    Compiling stacker v0.1.22
+#11 4.133    Compiling regex-automata v0.4.13
+#11 5.713    Compiling glam v0.27.0
+#11 5.731    Compiling tree-sitter v0.25.10
+#11 5.887    Compiling ar_archive_writer v0.2.0
+#11 5.981 The following warnings were emitted during compilation:
+#11 5.981 
+#11 5.981 warning: tree-sitter@0.25.10: Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 warning: tree-sitter@0.25.10: Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 warning: tree-sitter@0.25.10: Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 warning: tree-sitter@0.25.10: Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 warning: tree-sitter@0.25.10: Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 warning: tree-sitter@0.25.10: Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 
+#11 5.981 error: failed to run custom build command for `tree-sitter v0.25.10`
+#11 5.981 
+#11 5.981 Caused by:
+#11 5.981   process didn't exit successfully: `/app/target/release/build/tree-sitter-d4eca17c7468ecd9/build-script-build` (exit status: 1)
+#11 5.981   --- stdout
+#11 5.981   cargo:rerun-if-env-changed=CARGO_FEATURE_WASM
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/parser.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/reusable_node.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/clock.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/subtree.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lib.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/unicode
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/array.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/get_changed_ranges.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/atomic.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/alloc.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/unicode.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm_store.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm_store.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/length.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/language.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/point.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/stack.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/node.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/ts_assert.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lexer.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/query.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree_cursor.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/subtree.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/language.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/error_costs.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/stack.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/host.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree_cursor.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/alloc.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/parser.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/portable
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/reduce_action.h
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lexer.c
+#11 5.981   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/get_changed_ranges.c
+#11 5.981   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#11 5.981   OPT_LEVEL = Some(3)
+#11 5.981   TARGET = Some(wasm32-unknown-unknown)
+#11 5.981   CARGO_ENCODED_RUSTFLAGS = Some()
+#11 5.981   HOST = Some(x86_64-unknown-linux-gnu)
+#11 5.981   cargo:rerun-if-env-changed=CC_wasm32-unknown-unknown
+#11 5.981   CC_wasm32-unknown-unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CC_wasm32_unknown_unknown
+#11 5.981   CC_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CC
+#11 5.981   TARGET_CC = None
+#11 5.981   cargo:rerun-if-env-changed=CC
+#11 5.981   CC = None
+#11 5.981   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#11 5.981   cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981   RUSTC_WRAPPER = None
+#11 5.981   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#11 5.981   CRATE_CC_NO_DEFAULTS = None
+#11 5.981   DEBUG = Some(false)
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS
+#11 5.981   CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#11 5.981   TARGET_CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#11 5.981   CFLAGS_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#11 5.981   CFLAGS_wasm32-unknown-unknown = None
+#11 5.981   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#11 5.981   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#11 5.981   cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#11 5.981   CRATE_CC_NO_DEFAULTS = None
+#11 5.981   TARGET = Some(wasm32-unknown-unknown)
+#11 5.981   HOST = Some(x86_64-unknown-linux-gnu)
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS
+#11 5.981   CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#11 5.981   TARGET_CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#11 5.981   CFLAGS_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#11 5.981   CFLAGS_wasm32-unknown-unknown = None
+#11 5.981   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#11 5.981   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#11 5.981   cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#11 5.981   CRATE_CC_NO_DEFAULTS = None
+#11 5.981   TARGET = Some(wasm32-unknown-unknown)
+#11 5.981   HOST = Some(x86_64-unknown-linux-gnu)
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS
+#11 5.981   CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#11 5.981   TARGET_CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#11 5.981   CFLAGS_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#11 5.981   CFLAGS_wasm32-unknown-unknown = None
+#11 5.981   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#11 5.981   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#11 5.981   cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#11 5.981   CRATE_CC_NO_DEFAULTS = None
+#11 5.981   TARGET = Some(wasm32-unknown-unknown)
+#11 5.981   HOST = Some(x86_64-unknown-linux-gnu)
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS
+#11 5.981   CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#11 5.981   TARGET_CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#11 5.981   CFLAGS_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#11 5.981   CFLAGS_wasm32-unknown-unknown = None
+#11 5.981   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#11 5.981   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#11 5.981   cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#11 5.981   CRATE_CC_NO_DEFAULTS = None
+#11 5.981   TARGET = Some(wasm32-unknown-unknown)
+#11 5.981   HOST = Some(x86_64-unknown-linux-gnu)
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS
+#11 5.981   CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#11 5.981   TARGET_CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#11 5.981   CFLAGS_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#11 5.981   CFLAGS_wasm32-unknown-unknown = None
+#11 5.981   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#11 5.981   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#11 5.981   cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#11 5.981   CRATE_CC_NO_DEFAULTS = None
+#11 5.981   TARGET = Some(wasm32-unknown-unknown)
+#11 5.981   HOST = Some(x86_64-unknown-linux-gnu)
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS
+#11 5.981   CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#11 5.981   TARGET_CFLAGS = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#11 5.981   CFLAGS_wasm32_unknown_unknown = None
+#11 5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#11 5.981   CFLAGS_wasm32-unknown-unknown = None
+#11 5.981 
+#11 5.981   --- stderr
+#11 5.981 
+#11 5.981 
+#11 5.981   error occurred in cc-rs: failed to find tool "clang": No such file or directory (os error 2)
+#11 5.981 
+#11 5.981 
+#11 5.982 warning: build failed, waiting for other jobs to finish...
+#11 ERROR: process "/bin/sh -c cargo build --release -p wasm --target wasm32-unknown-unknown" did not complete successfully: exit code: 101
+------
+ > [7/8] RUN cargo build --release -p wasm --target wasm32-unknown-unknown:
+5.981   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+5.981   CFLAGS_wasm32-unknown-unknown = None
+5.981 
+5.981   --- stderr
+5.981 
+5.981 
+5.981   error occurred in cc-rs: failed to find tool "clang": No such file or directory (os error 2)
+5.981 
+5.981 
+5.982 warning: build failed, waiting for other jobs to finish...
+------
+Dockerfile:26
+--------------------
+  24 |     # Build the WASM crate
+  25 |     # We use --release for optimized WASM
+  26 | >>> RUN cargo build --release -p wasm --target wasm32-unknown-unknown
+  27 |     
+  28 |     # Generate JS bindings
+--------------------
+ERROR: failed to solve: process "/bin/sh -c cargo build --release -p wasm --target wasm32-unknown-unknown" did not complete successfully: exit code: 101

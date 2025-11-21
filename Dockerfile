@@ -4,6 +4,22 @@ FROM rust:1.83
 # Install the WASM target
 RUN rustup target add wasm32-unknown-unknown
 
+# Install WASI SDK for compiling C code to WASM
+# This provides clang with WASM sysroot (C standard library headers)
+RUN apt-get update && \
+    apt-get install -y wget && \
+    wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-x86_64-linux.tar.gz && \
+    tar -xzf wasi-sdk-24.0-x86_64-linux.tar.gz -C /opt && \
+    rm wasi-sdk-24.0-x86_64-linux.tar.gz && \
+    apt-get remove -y wget && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set environment variables for WASI SDK
+ENV CC_wasm32_unknown_unknown=/opt/wasi-sdk-24.0-x86_64-linux/bin/clang
+ENV AR_wasm32_unknown_unknown=/opt/wasi-sdk-24.0-x86_64-linux/bin/llvm-ar
+ENV CFLAGS_wasm32_unknown_unknown="--sysroot=/opt/wasi-sdk-24.0-x86_64-linux/share/wasi-sysroot"
+
 # Install wasm-bindgen-cli
 # Note: The version must match the one in Cargo.toml. 
 # We'll assume 0.2.99 for now based on typical usage, but ideally we'd check Cargo.lock.

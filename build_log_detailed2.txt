@@ -1,0 +1,286 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.33kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/rust:1.83
+#2 DONE 0.6s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 112B done
+#3 DONE 0.0s
+
+#4 [1/9] FROM docker.io/library/rust:1.83@sha256:a45bf1f5d9af0a23b26703b3500d70af1abff7f984a7abef5a104b42c02a292b
+#4 resolve docker.io/library/rust:1.83@sha256:a45bf1f5d9af0a23b26703b3500d70af1abff7f984a7abef5a104b42c02a292b 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 19.33kB 0.0s done
+#5 DONE 0.1s
+
+#6 [2/9] RUN rustup target add wasm32-unknown-unknown
+#6 CACHED
+
+#7 [3/9] RUN apt-get update && apt-get install -y clang && rm -rf /var/lib/apt/lists/*
+#7 CACHED
+
+#8 [4/9] RUN cargo install -f wasm-bindgen-cli --version 0.2.105
+#8 CACHED
+
+#9 [5/9] WORKDIR /app
+#9 CACHED
+
+#10 [6/9] COPY . .
+#10 DONE 0.1s
+
+#11 [7/9] RUN mkdir -p /out
+#11 DONE 0.3s
+
+#12 [8/9] RUN cargo build --release -p wasm --target wasm32-unknown-unknown
+#12 0.486     Updating crates.io index
+#12 1.002  Downloading crates ...
+#12 1.130   Downloaded tree-sitter-language v0.1.5
+#12 1.134   Downloaded robust v0.2.3
+#12 1.185   Downloaded thiserror-impl v1.0.69
+#12 1.190   Downloaded rustversion v1.0.22
+#12 1.198   Downloaded thiserror v1.0.69
+#12 1.208   Downloaded wasm-bindgen-macro v0.2.105
+#12 1.210   Downloaded ar_archive_writer v0.2.0
+#12 1.215   Downloaded streaming-iterator v0.1.9
+#12 1.219   Downloaded psm v0.1.28
+#12 1.227   Downloaded wasm-bindgen-macro-support v0.2.105
+#12 1.231   Downloaded wasm-bindgen v0.2.105
+#12 1.237   Downloaded stacker v0.1.22
+#12 1.242   Downloaded cc v1.2.46
+#12 1.269   Downloaded bumpalo v3.19.0
+#12 1.301   Downloaded object v0.32.2
+#12 1.320   Downloaded tree-sitter v0.25.10
+#12 1.360   Downloaded glam v0.27.0
+#12 1.397   Downloaded console_error_panic_hook v0.1.7
+#12 1.479    Compiling shlex v1.3.0
+#12 1.479    Compiling find-msvc-tools v0.1.5
+#12 1.479    Compiling memchr v2.7.6
+#12 1.481    Compiling proc-macro2 v1.0.103
+#12 1.482    Compiling unicode-ident v1.0.22
+#12 1.483    Compiling quote v1.0.42
+#12 1.488    Compiling serde_core v1.0.228
+#12 1.492    Compiling serde_json v1.0.145
+#12 1.492    Compiling equivalent v1.0.2
+#12 1.492    Compiling hashbrown v0.16.1
+#12 1.492    Compiling wasm-bindgen-shared v0.2.105
+#12 1.679    Compiling itoa v1.0.15
+#12 1.803    Compiling cc v1.2.46
+#12 1.872    Compiling ryu v1.0.20
+#12 1.928    Compiling serde v1.0.228
+#12 1.940    Compiling regex-syntax v0.8.8
+#12 2.004    Compiling rustversion v1.0.22
+#12 2.039    Compiling cfg-if v1.0.4
+#12 2.058    Compiling libc v0.2.177
+#12 2.092    Compiling streaming-iterator v0.1.9
+#12 2.233    Compiling tree-sitter-language v0.1.5
+#12 2.344    Compiling object v0.32.2
+#12 2.441    Compiling indexmap v2.12.1
+#12 2.457    Compiling aho-corasick v1.1.4
+#12 2.646    Compiling thiserror v1.0.69
+#12 2.876    Compiling bumpalo v3.19.0
+#12 3.225    Compiling syn v2.0.110
+#12 3.274    Compiling config v0.1.0 (/app/config)
+#12 3.383    Compiling wasm-bindgen v0.2.105
+#12 3.399    Compiling once_cell v1.21.3
+#12 3.480    Compiling robust v0.2.3
+#12 3.728    Compiling tree-sitter-openscad-parser v0.1.0 (/app/libs/openscad-parser)
+#12 3.728    Compiling stacker v0.1.22
+#12 4.537    Compiling regex-automata v0.4.13
+#12 5.815    Compiling glam v0.27.0
+#12 6.212    Compiling ar_archive_writer v0.2.0
+#12 6.221    Compiling tree-sitter v0.25.10
+#12 6.511    Compiling wasm-bindgen-macro-support v0.2.105
+#12 6.616    Compiling psm v0.1.28
+#12 6.921    Compiling thiserror-impl v1.0.69
+#12 7.215    Compiling regex v1.12.2
+#12 7.358 The following warnings were emitted during compilation:
+#12 7.358 
+#12 7.358 warning: tree-sitter@0.25.10: In file included from /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lib.c:1:
+#12 7.358 warning: tree-sitter@0.25.10: In file included from /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/./alloc.c:1:
+#12 7.358 warning: tree-sitter@0.25.10: /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/alloc.h:9:10: fatal error: 'stdio.h' file not found
+#12 7.358 warning: tree-sitter@0.25.10: #include <stdio.h>
+#12 7.358 warning: tree-sitter@0.25.10:          ^~~~~~~~~
+#12 7.358 warning: tree-sitter@0.25.10: 1 error generated.
+#12 7.358 
+#12 7.358 error: failed to run custom build command for `tree-sitter v0.25.10`
+#12 7.358 
+#12 7.358 Caused by:
+#12 7.359   process didn't exit successfully: `/app/target/release/build/tree-sitter-d4eca17c7468ecd9/build-script-build` (exit status: 1)
+#12 7.359   --- stdout
+#12 7.359   cargo:rerun-if-env-changed=CARGO_FEATURE_WASM
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/parser.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/reusable_node.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/clock.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/subtree.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lib.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/unicode
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/array.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/get_changed_ranges.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/atomic.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/alloc.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/unicode.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm_store.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm_store.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/length.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/language.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/point.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/stack.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/node.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/ts_assert.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lexer.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/query.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree_cursor.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/subtree.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/language.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/error_costs.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/stack.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/host.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/tree_cursor.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/alloc.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/parser.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/portable
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/reduce_action.h
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lexer.c
+#12 7.359   cargo:rerun-if-changed=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/get_changed_ranges.c
+#12 7.359   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#12 7.359   OPT_LEVEL = Some(3)
+#12 7.359   TARGET = Some(wasm32-unknown-unknown)
+#12 7.359   CARGO_ENCODED_RUSTFLAGS = Some()
+#12 7.359   HOST = Some(x86_64-unknown-linux-gnu)
+#12 7.359   cargo:rerun-if-env-changed=CC_wasm32-unknown-unknown
+#12 7.359   CC_wasm32-unknown-unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CC_wasm32_unknown_unknown
+#12 7.359   CC_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CC
+#12 7.359   TARGET_CC = None
+#12 7.359   cargo:rerun-if-env-changed=CC
+#12 7.359   CC = None
+#12 7.359   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#12 7.359   RUSTC_WRAPPER = None
+#12 7.359   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#12 7.359   CRATE_CC_NO_DEFAULTS = None
+#12 7.359   DEBUG = Some(false)
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS
+#12 7.359   CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#12 7.359   TARGET_CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#12 7.359   CFLAGS_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#12 7.359   CFLAGS_wasm32-unknown-unknown = None
+#12 7.359   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#12 7.359   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#12 7.359   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#12 7.359   CRATE_CC_NO_DEFAULTS = None
+#12 7.359   TARGET = Some(wasm32-unknown-unknown)
+#12 7.359   HOST = Some(x86_64-unknown-linux-gnu)
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS
+#12 7.359   CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#12 7.359   TARGET_CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#12 7.359   CFLAGS_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#12 7.359   CFLAGS_wasm32-unknown-unknown = None
+#12 7.359   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#12 7.359   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#12 7.359   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#12 7.359   CRATE_CC_NO_DEFAULTS = None
+#12 7.359   TARGET = Some(wasm32-unknown-unknown)
+#12 7.359   HOST = Some(x86_64-unknown-linux-gnu)
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS
+#12 7.359   CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#12 7.359   TARGET_CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#12 7.359   CFLAGS_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#12 7.359   CFLAGS_wasm32-unknown-unknown = None
+#12 7.359   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#12 7.359   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#12 7.359   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#12 7.359   CRATE_CC_NO_DEFAULTS = None
+#12 7.359   TARGET = Some(wasm32-unknown-unknown)
+#12 7.359   HOST = Some(x86_64-unknown-linux-gnu)
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS
+#12 7.359   CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#12 7.359   TARGET_CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#12 7.359   CFLAGS_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#12 7.359   CFLAGS_wasm32-unknown-unknown = None
+#12 7.359   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#12 7.359   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#12 7.359   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#12 7.359   CRATE_CC_NO_DEFAULTS = None
+#12 7.359   TARGET = Some(wasm32-unknown-unknown)
+#12 7.359   HOST = Some(x86_64-unknown-linux-gnu)
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS
+#12 7.359   CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#12 7.359   TARGET_CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#12 7.359   CFLAGS_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#12 7.359   CFLAGS_wasm32-unknown-unknown = None
+#12 7.359   OUT_DIR = Some(/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out)
+#12 7.359   cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+#12 7.359   cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+#12 7.359   CRATE_CC_NO_DEFAULTS = None
+#12 7.359   TARGET = Some(wasm32-unknown-unknown)
+#12 7.359   HOST = Some(x86_64-unknown-linux-gnu)
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS
+#12 7.359   CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=TARGET_CFLAGS
+#12 7.359   TARGET_CFLAGS = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32_unknown_unknown
+#12 7.359   CFLAGS_wasm32_unknown_unknown = None
+#12 7.359   cargo:rerun-if-env-changed=CFLAGS_wasm32-unknown-unknown
+#12 7.359   CFLAGS_wasm32-unknown-unknown = None
+#12 7.359   cargo:warning=In file included from /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lib.c:1:
+#12 7.359   cargo:warning=In file included from /usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/./alloc.c:1:
+#12 7.359   cargo:warning=/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/alloc.h:9:10: fatal error: 'stdio.h' file not found
+#12 7.359   cargo:warning=#include <stdio.h>
+#12 7.359   cargo:warning=         ^~~~~~~~~
+#12 7.359   cargo:warning=1 error generated.
+#12 7.359 
+#12 7.359   --- stderr
+#12 7.359 
+#12 7.359 
+#12 7.359   error occurred in cc-rs: command did not execute successfully (status code exit status: 1): LC_ALL="C" "clang" "-O3" "-ffunction-sections" "-fdata-sections" "-fno-exceptions" "--target=wasm32-unknown-unknown" "-I" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src" "-I" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm" "-I" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/include" "-std=c11" "-fvisibility=hidden" "-Wshadow" "-Wno-unused-parameter" "-Wno-incompatible-pointer-types" "-D_POSIX_C_SOURCE=200112L" "-D_DEFAULT_SOURCE" "-D_DARWIN_C_SOURCE" "-o" "/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out/98490c8781b409d2-lib.o" "-c" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lib.c"
+#12 7.359 
+#12 7.359 
+#12 7.359 warning: build failed, waiting for other jobs to finish...
+#12 ERROR: process "/bin/sh -c cargo build --release -p wasm --target wasm32-unknown-unknown" did not complete successfully: exit code: 101
+------
+ > [8/9] RUN cargo build --release -p wasm --target wasm32-unknown-unknown:
+7.359   cargo:warning=         ^~~~~~~~~
+7.359   cargo:warning=1 error generated.
+7.359 
+7.359   --- stderr
+7.359 
+7.359 
+7.359   error occurred in cc-rs: command did not execute successfully (status code exit status: 1): LC_ALL="C" "clang" "-O3" "-ffunction-sections" "-fdata-sections" "-fno-exceptions" "--target=wasm32-unknown-unknown" "-I" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src" "-I" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/wasm" "-I" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/include" "-std=c11" "-fvisibility=hidden" "-Wshadow" "-Wno-unused-parameter" "-Wno-incompatible-pointer-types" "-D_POSIX_C_SOURCE=200112L" "-D_DEFAULT_SOURCE" "-D_DARWIN_C_SOURCE" "-o" "/app/target/wasm32-unknown-unknown/release/build/tree-sitter-881a793a9bc752a5/out/98490c8781b409d2-lib.o" "-c" "/usr/local/cargo/registry/src/index.crates.io-6f17d22bba15001f/tree-sitter-0.25.10/src/lib.c"
+7.359 
+7.359 
+7.359 warning: build failed, waiting for other jobs to finish...
+------
+Dockerfile:29
+--------------------
+  27 |     # Build the WASM crate
+  28 |     # We use --release for optimized WASM
+  29 | >>> RUN cargo build --release -p wasm --target wasm32-unknown-unknown
+  30 |     
+  31 |     # Generate JS bindings
+--------------------
+ERROR: failed to solve: process "/bin/sh -c cargo build --release -p wasm --target wasm32-unknown-unknown" did not complete successfully: exit code: 101
