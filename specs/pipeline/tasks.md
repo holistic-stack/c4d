@@ -681,6 +681,69 @@ Support `translate`, `rotate`, and `scale` transformations end-to-end.
 
 ---
 
+### Task 5.2 – Cylinder Parity (OpenSCAD-Compatible)
+
+**Goal**  
+Implement `cylinder()` (including cones and inverted cones) exactly like OpenSCAD’s `CylinderNode::createGeometry`, honoring `$fn`, `$fa`, `$fs`, and all parameter permutations (`h`, `r`, `r1`, `r2`, `d`, `d1`, `d2`, `center`).
+
+**Steps**
+
+1. **Evaluator Support**  
+   - Extend the evaluator to parse cylinder statements into a new `GeometryNode::Cylinder { radius_bottom, radius_top, height, centered, segments, span }`.  
+   - Reuse `resolution::compute_segments` with `max(r1, r2)` so `$fn/$fa/$fs` match `CurveDiscretizer::getCircularSegmentCount`.  
+   - Validate parameters (positive height, non-negative radii, at least one non-zero radius) and emit diagnostics on failure—no silent fallbacks.
+
+2. **manifold-rs Primitive**  
+   - Create `libs/manifold-rs/src/primitives/cylinder/{mod.rs, tests.rs}` (each <500 lines, documented).  
+   - Generate vertices exactly like OpenSCAD: two circles (or single apex) at `z1/z2` depending on `center`, with fragments determined above.  
+   - Build faces for frustum, cone, and inverted cone cases, matching winding/cap order (`num_fragments - i - 1` for bottom face) so outputs are byte-for-byte compatible with upstream PolySets.  
+   - Reuse the shared half-edge builder to convert triangles/quads into a validated `Manifold`.
+
+3. **Integration & Tests**  
+   - Wire `GeometryNode::Cylinder` through `from_ir` and add regression tests verifying:  
+     1. Centered vs non-centered bounding boxes.  
+     2. `$fn` overrides fragment counts; `$fa/$fs` fallback when `$fn=0`.  
+     3. Cones/inverted cones produce the expected vertex/triangle totals (matching OpenSCAD output for sample inputs).  
+     4. Invalid parameters return explicit `ManifoldError` or evaluator diagnostics.
+
+**Acceptance Criteria**
+
+- `cylinder()` (and `cone` variants) produce meshes identical to OpenSCAD for representative `$fn/$fa/$fs` settings.  
+- Evaluator + manifold tests cover parameter parsing, centering, cone cases, and fragment math; `cargo test -p manifold-rs` passes.
+
+---
+
+### Task 5.3 – Polyhedron Parity (OpenSCAD-Compatible)
+
+**Goal**  
+Port OpenSCAD’s `polyhedron(points, faces, convexity)` semantics into evaluator + `manifold-rs`, matching point/face validation, winding reversal, and convexity bookkeeping.
+
+**Steps**
+
+1. **Evaluator & Diagnostics**  
+   - Introduce `GeometryNode::Polyhedron { points, faces, convexity, span }`.  
+   - Validate that `points` is a vector of finite triplets and `faces` is a vector of integer vectors with ≥3 entries, mirroring OpenSCAD log messages (converted into structured diagnostics).  
+   - Reject out-of-range indices and non-numeric values with clear errors; no face auto-fixes beyond what upstream does.
+
+2. **manifold-rs Primitive**  
+   - Add `libs/manifold-rs/src/primitives/polyhedron/{mod.rs, tests.rs}` responsible for:  
+     - Copying vertices, reversing face winding, and splitting polygons >3 into triangles using the same fan strategy as OpenSCAD.  
+     - Validating topology (duplicate vertex indices, degenerate faces) and returning `ManifoldError::InvalidTopology` when issues arise.  
+     - Preserving `convexity` metadata for downstream consumers.
+
+3. **Testing & Integration**  
+   - Add unit tests for simple tetrahedron, cube, and invalid face cases (too few vertices, out-of-range indices).  
+   - Extend integration tests to ensure evaluator diagnostics propagate through WASM (matching existing pipeline error flow).  
+   - Document sample `polyhedron()` snippets in tests with comments explaining expectations per project guidelines.
+
+**Acceptance Criteria**
+
+- `polyhedron()` inputs that succeed in OpenSCAD yield identical meshes/diagnostics in Rust, including winding and convexity flags.  
+- Invalid input scenarios produce explicit diagnostics identical in spirit to upstream logging.  
+- `cargo test -p manifold-rs` and evaluator/WASM suites include coverage for tetrahedron, indexed face errors, and documentation tests.
+
+---
+
 ## Phase 6 – Boolean Operations
 
 ### Task 6.1 – Robust Predicates

@@ -337,11 +337,15 @@ No further setup required for Phase 1 integration.
 - **Phase 4 – Sphere & Resolution Controls**  
   - Implement `sphere()` via the same latitude/longitude tessellation as upstream OpenSCAD (mirroring `SphereNode::createGeometry`).  
   - Use the `EvaluationContext` resolution parameters when tessellating the sphere so `$fn/$fa/$fs` yield the same fragment counts as the C++ `CurveDiscretizer`.  
-  - Keep regression tests comparing cap heights, vertex/triangle counts, and fragment clamping to guard against regressions. Future work in this phase focuses on maintaining parity as new upstream behaviour emerges.
+  - Keep regression tests comparing cap heights, vertex/triangle counts, and fragment clamping to guard against regressions. Future work in this phase focuses on maintaining parity as new upstream behaviour emerges.  
+  - **Cylinder & Polyhedron Parity Prep:** research `CylinderNode::createGeometry` + `PolyhedronNode::createGeometry` in `openscad/src/core/primitives.cc` and capture requirements for `$fn/$fa/$fs` handling on cylinders and winding/validation rules for arbitrary polyhedra. (See Phase 5 below for concrete implementation tasks.)
 
-- **Phase 5 – Transformations**  
+- **Phase 5 – Cylinders, Polyhedra & Transformations**  
   - Support `translate`, `rotate`, `scale` transformations in IR and `manifold-rs`.  
-  - Ensure transformations preserve and update Spans for diagnostics.
+  - Ensure transformations preserve and update Spans for diagnostics.  
+  - **Cylinder parity:** add evaluator + `manifold-rs` primitives that replicate OpenSCAD cylinders (including cone/inverted-cone variants, centered vs non-centered heights, and `$fn/$fa/$fs` driven fragment counts). Tests will compare vertex counts, cap winding, and parameter validation with upstream.  
+  - **Polyhedron parity:** map `polyhedron(points, faces, convexity)` into IR + `manifold-rs`, mirroring the upstream validation rules (vector parsing, face reversal, convexity flag, and strict error logging). Tests cover valid tetrahedron cases, invalid indices, <3 vertex rejection, and consistent diagnostics.  
+  - Update docs/tests whenever OpenSCAD introduces changes so parity remains explicit.
 
 - **Phase 6 – Boolean Operations**  
   - Implement robust `union`, `difference`, and `intersection`.  
