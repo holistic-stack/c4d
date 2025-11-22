@@ -92,6 +92,34 @@ function getDataViewMemory0() {
     }
     return cachedDataViewMemory0;
 }
+
+let cachedUint32ArrayMemory0 = null;
+
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
+function getArrayU32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+let cachedFloat32ArrayMemory0 = null;
+
+function getFloat32ArrayMemory0() {
+    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachedFloat32ArrayMemory0;
+}
+
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
 /**
  * Installs a panic hook that forwards Rust panics to the browser console.
  *
@@ -104,6 +132,43 @@ function getDataViewMemory0() {
  */
 export function init_panic_hook() {
     wasm.init_panic_hook();
+}
+
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+/**
+ * Compiles OpenSCAD source and renders it to a mesh.
+ *
+ * This is the main entry point for the pipeline. It parses the source,
+ * evaluates it, and generates a mesh suitable for GPU rendering.
+ *
+ * # Errors
+ * Returns a JavaScript error containing diagnostics if compilation fails.
+ *
+ * # Examples
+ * ```no_run
+ * // In JavaScript:
+ * // try {
+ * //   const mesh = await compile_and_render("cube([2, 2, 2]);");
+ * //   console.log("Vertices:", mesh.vertex_count());
+ * // } catch (error) {
+ * //   console.error("Compilation failed:", error);
+ * // }
+ * ```
+ * @param {string} source
+ * @returns {MeshHandle}
+ */
+export function compile_and_render(source) {
+    const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.compile_and_render(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return MeshHandle.__wrap(ret[0]);
 }
 
 /**
@@ -122,11 +187,6 @@ export function default_segments() {
     return ret >>> 0;
 }
 
-function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_externrefs.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
-}
 /**
  * Compiles OpenSCAD source and returns the number of geometry nodes
  * produced by the current evaluator pipeline.
@@ -155,6 +215,229 @@ export function compile_and_count_nodes(source) {
     }
     return ret[0] >>> 0;
 }
+
+/**
+ * Diagnostic severity for JavaScript.
+ * @enum {0 | 1 | 2}
+ */
+export const Severity = Object.freeze({
+    Error: 0, "0": "Error",
+    Warning: 1, "1": "Warning",
+    Info: 2, "2": "Info",
+});
+
+const DiagnosticFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_diagnostic_free(ptr >>> 0, 1));
+/**
+ * A diagnostic message for JavaScript.
+ *
+ * # Examples
+ * ```no_run
+ * // In JavaScript:
+ * // const diag = result.diagnostics[0];
+ * // console.log(diag.message());
+ * // console.log(diag.start(), diag.end());
+ * ```
+ */
+export class Diagnostic {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(Diagnostic.prototype);
+        obj.__wbg_ptr = ptr;
+        DiagnosticFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        DiagnosticFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_diagnostic_free(ptr, 0);
+    }
+    /**
+     * Returns the end position in the source.
+     * @returns {number}
+     */
+    end() {
+        const ret = wasm.diagnostic_end(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Returns the hint, if any.
+     * @returns {string | undefined}
+     */
+    hint() {
+        const ret = wasm.diagnostic_hint(this.__wbg_ptr);
+        let v1;
+        if (ret[0] !== 0) {
+            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v1;
+    }
+    /**
+     * Returns the start position in the source.
+     * @returns {number}
+     */
+    start() {
+        const ret = wasm.diagnostic_start(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Returns the diagnostic message.
+     * @returns {string}
+     */
+    message() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.diagnostic_message(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Returns the severity of the diagnostic.
+     * @returns {Severity}
+     */
+    severity() {
+        const ret = wasm.diagnostic_severity(this.__wbg_ptr);
+        return ret;
+    }
+}
+if (Symbol.dispose) Diagnostic.prototype[Symbol.dispose] = Diagnostic.prototype.free;
+
+const DiagnosticListFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_diagnosticlist_free(ptr >>> 0, 1));
+/**
+ * A collection of diagnostics.
+ */
+export class DiagnosticList {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        DiagnosticListFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_diagnosticlist_free(ptr, 0);
+    }
+    /**
+     * Returns a diagnostic by index.
+     * @param {number} index
+     * @returns {Diagnostic | undefined}
+     */
+    get(index) {
+        const ret = wasm.diagnosticlist_get(this.__wbg_ptr, index);
+        return ret === 0 ? undefined : Diagnostic.__wrap(ret);
+    }
+    /**
+     * Returns the number of diagnostics.
+     * @returns {number}
+     */
+    len() {
+        const ret = wasm.diagnosticlist_len(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Returns true if there are no diagnostics.
+     * @returns {boolean}
+     */
+    is_empty() {
+        const ret = wasm.diagnosticlist_is_empty(this.__wbg_ptr);
+        return ret !== 0;
+    }
+}
+if (Symbol.dispose) DiagnosticList.prototype[Symbol.dispose] = DiagnosticList.prototype.free;
+
+const MeshHandleFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_meshhandle_free(ptr >>> 0, 1));
+/**
+ * Mesh handle returned from compilation.
+ *
+ * Contains vertex and index counts for the rendered mesh.
+ *
+ * # Examples
+ * ```no_run
+ * // In JavaScript:
+ * // const result = await compile_and_render("cube([1, 1, 1]);");
+ * // console.log(result.vertex_count(), result.triangle_count());
+ * ```
+ */
+export class MeshHandle {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(MeshHandle.prototype);
+        obj.__wbg_ptr = ptr;
+        MeshHandleFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        MeshHandleFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_meshhandle_free(ptr, 0);
+    }
+    /**
+     * Returns the number of vertices in the mesh.
+     * @returns {number}
+     */
+    vertex_count() {
+        const ret = wasm.meshhandle_vertex_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Returns the number of triangles in the mesh.
+     * @returns {number}
+     */
+    triangle_count() {
+        const ret = wasm.meshhandle_triangle_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Returns the index buffer as a Uint32Array.
+     * @returns {Uint32Array}
+     */
+    indices() {
+        const ret = wasm.meshhandle_indices(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Returns the vertex buffer as a Float32Array.
+     * @returns {Float32Array}
+     */
+    vertices() {
+        const ret = wasm.meshhandle_vertices(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+}
+if (Symbol.dispose) MeshHandle.prototype[Symbol.dispose] = MeshHandle.prototype.free;
 
 const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);
 
@@ -194,6 +477,9 @@ async function __wbg_load(module, imports) {
 function __wbg_get_imports() {
     const imports = {};
     imports.wbg = {};
+    imports.wbg.__wbg___wbindgen_throw_b855445ff6a94295 = function(arg0, arg1) {
+        throw new Error(getStringFromWasm0(arg0, arg1));
+    };
     imports.wbg.__wbg_error_7534b8e9a36f1ab4 = function(arg0, arg1) {
         let deferred0_0;
         let deferred0_1;
@@ -239,6 +525,8 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
     cachedDataViewMemory0 = null;
+    cachedFloat32ArrayMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 
 

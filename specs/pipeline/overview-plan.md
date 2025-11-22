@@ -221,8 +221,9 @@ Key rules:
   - Thin bridge.  
   - Calls `manifold-rs` to process code and return mesh buffers.  
   - No mesh logic, no parsing logic.  
+  - Exposes a small set of WASM entry points, notably `compile_and_render(source: &str)` and `compile_and_count_nodes(source: &str)`, where `compile_and_render` returns a `MeshHandle` that owns vertex (`Float32Array`) and index (`Uint32Array`) buffers plus basic counts.  
   - Produces the **only browser-facing WASM bundle**: the wasm-bindgen output under `libs/wasm/pkg` (for example `wasm.js` + `wasm_bg.wasm`), analogous to Tree-sitter's `web-tree-sitter.{js,wasm}` pair.  
-  - Is consumed by TypeScript via a small wrapper (for example `initWasm`, `compile(...)`) that mirrors `web-tree-sitter`'s `Parser.init()` + `parser.parse()` pattern.
+  - Is consumed by TypeScript via a small wrapper (for example `initWasm`, `compile(...)`) that mirrors `web-tree-sitter`'s `Parser.init()` + `parser.parse()` pattern and forwards the resulting `MeshHandle` into the Three.js scene.
 
 - **`libs/openscad-lsp`**  
   - Rust-native Language Server built with `tower-lsp`.  
@@ -261,8 +262,8 @@ For the initial tracer-bullet implementation, all layers must participate in a m
 - **Playground**  
   - The user edits `cube(10);` in the OpenSCAD editor and triggers a compile/render action.
 - **`libs/wasm`**  
-  - Receives the source string and exposes a single entry point (for example `compile_and_render` or `compile_and_count_nodes`).  
-  - Forwards the raw OpenSCAD source to `libs/manifold-rs` as the orchestrator of the geometry pipeline.
+  - Receives the source string and exposes `compile_and_render(source: &str)` (plus a helper `compile_and_count_nodes` for diagnostics/tests).  
+  - Forwards the raw OpenSCAD source to `libs/manifold-rs` as the orchestrator of the geometry pipeline, then wraps the resulting `MeshBuffers` in a WASM-friendly `MeshHandle` that owns vertex and index buffers alongside simple counts.
 - **`libs/manifold-rs`**  
   - Calls into `libs/openscad-eval` with the original OpenSCAD source string `cube(10);` to obtain an **evaluated/flattened AST**.  
   - Transforms this evaluated AST into a mesh and returns it to `libs/wasm`.
@@ -276,8 +277,8 @@ For the initial tracer-bullet implementation, all layers must participate in a m
   - Parses the OpenSCAD source into a CST using the Tree-sitter grammar and returns it to `libs/openscad-ast`.
 - **Back up to geometry and rendering**  
   - `libs/manifold-rs` converts the evaluated AST for `cube(10);` into a mesh and returns this mesh to `libs/wasm`.  
-  - `libs/wasm` returns the generated mesh to the Playground as typed buffers/handles.  
-  - The Playground converts the mesh buffers into Three.js geometry and renders the cube.
+  - `libs/wasm` returns the generated mesh to the Playground as a `MeshHandle` (node/vertex/triangle counts plus vertex and index buffers).  
+  - The Playground's Web Worker forwards this handle to the Three.js `SceneManager`, which builds a `THREE.BufferGeometry` from the typed arrays and renders the result, without any hard-coded primitive geometry.
 
 This minimal vertical slice is the reference "happy path" for all future primitives and features.
 
@@ -307,7 +308,7 @@ No further setup required for Phase 1 integration.
   - Implement minimal “hello world” paths:  
     - Playground → Worker → WASM (for example, echo a string or return a trivial mesh).  
     - Editor → `openscad-lsp` (a tower-lsp server that can parse a file and publish basic syntax diagnostics).
-  - *Current status:* `apps/playground` already contains a minimal SvelteKit setup; Three.js scene, worker wiring, and WASM/`manifold-rs` geometry preview are still pending.
+  - *Current status:* `apps/playground` contains a SvelteKit setup with a Three.js scene, worker wiring, and a WASM/`manifold-rs` geometry preview that dynamically builds `THREE.BufferGeometry` from the `MeshHandle` returned by `libs/wasm`.
 
 - **Phase 2 – First Primitive (Cube)**  
   - Implement a fully working `cube()` primitive end-to-end.  

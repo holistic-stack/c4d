@@ -13,3 +13,6 @@ manifold-rs = { path = "../manifold-rs" }
 openscad-ast = { path = "../openscad-ast" }
 openscad-eval = { path = "../openscad-eval" }
 wasm-bindgen.workspace = true
+
+[build-dependencies]
+cc = "1.0"

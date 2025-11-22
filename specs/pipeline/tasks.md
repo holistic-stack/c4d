@@ -178,7 +178,7 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 - TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly (zero lint errors).
 
 **Task 1.2 Current Status:**  
-- `apps/playground` has a SvelteKit project with Three.js scene manager, Web Worker, and WASM wrapper implemented.
+- `apps/playground` has a SvelteKit project with a Three.js scene manager, Web Worker, and WASM wrapper implemented; the worker calls `compile_and_render` from `libs/wasm` and the scene manager builds dynamic `THREE.BufferGeometry` from the returned `MeshHandle` (vertices + indices) instead of using hard-coded primitive geometry.  
 - `pnpm check` and `pnpm build` pass.
 - Integration with `libs/wasm` via the local `scripts/build-wasm.sh` workflow is verified.
 
@@ -442,9 +442,8 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
 
 3. **WASM Interface**  
    - In `libs/wasm`:
-     - Expose an async entry point such as `async fn compile_and_render(source: &str) -> Result<MeshHandle, Vec<Diagnostic>>` (exported via `wasm-bindgen` and `wasm-bindgen-futures`).
-     - Ensure this function internally follows the exact sequence above for `cube(10);` without bypassing any crate boundaries.
-     - For now, `MeshHandle` can be a stub or dummy when rendering is not fully implemented, as long as the full pipeline path is exercised.
+     - Expose a `compile_and_render(source: &str) -> Result<MeshHandle, JsValue>` entry point (exported via `wasm-bindgen`) that internally follows the exact sequence above for `cube(10);` without bypassing any crate boundaries.
+     - Ensure `MeshHandle` carries counts and typed vertex/index buffers suitable for building a `THREE.BufferGeometry` in the Playground, so the worker can return the real manifold mesh to the renderer.
 
 4. **Playground Diagnostics**  
    - In the worker, forward diagnostics back to the main thread.  

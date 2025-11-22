@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { MeshHandle } from '../../lib/wasm/mesh-wrapper';
 
 export class SceneManager {
     private scene: THREE.Scene;
@@ -34,7 +35,7 @@ export class SceneManager {
         directionalLight.position.set(1, 1, 1);
         this.scene.add(directionalLight);
 
-        // Add a placeholder cube
+        // Add a placeholder cube that will later be replaced with pipeline geometry
         const geometry = new THREE.BoxGeometry();
         const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
         this.cube = new THREE.Mesh(geometry, material);
@@ -59,12 +60,24 @@ export class SceneManager {
         this.renderer.render(this.scene, this.camera);
     }
 
-    public updateGeometry(nodeCount: number) {
-        // For now, just log the count or change color/scale based on it
-        console.log(`Updating geometry with node count: ${nodeCount}`);
+    public updateGeometry(mesh: MeshHandle) {
+        const { nodeCount, vertexCount, triangleCount, vertices, indices } = mesh;
+        console.log('[scene] Updating geometry', {
+            nodeCount,
+            vertexCount,
+            triangleCount,
+            vertexBufferLength: vertices.length,
+            indexBufferLength: indices.length
+        });
 
-        // Visual feedback: scale the cube based on node count (clamped)
-        const scale = Math.min(Math.max(nodeCount, 0.5), 5);
-        this.cube.scale.set(scale, scale, scale);
+        // Build a dynamic BufferGeometry from the WASM-provided mesh buffers
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+        geometry.computeVertexNormals();
+
+        // Replace the placeholder cube's geometry with the new mesh
+        this.cube.geometry.dispose();
+        this.cube.geometry = geometry;
     }
 }

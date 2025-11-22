@@ -2,6 +2,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { SceneManager } from '../components/viewer/scene-manager';
     import PipelineWorker from '../worker/pipeline.worker?worker';
+    import type { MeshHandle } from '../lib/wasm/mesh-wrapper';
 
     let canvas: HTMLCanvasElement;
     let sceneManager: SceneManager;
@@ -9,22 +10,30 @@
     let source = 'cube(10);';
     let status = 'Initializing...';
     let nodeCount = 0;
+    let vertexCount = 0;
+    let triangleCount = 0;
 
     onMount(async () => {
         // Initialize Worker
         worker = new PipelineWorker();
+        console.log('[ui] worker created');
         
         worker.onmessage = (event) => {
             const { type, payload } = event.data;
+            console.log('[ui] worker message', { type, payload });
             
             if (type === 'init_complete') {
                 status = 'Ready';
                 compile();
             } else if (type === 'compile_success') {
                 status = 'Compiled';
-                nodeCount = payload.nodeCount;
+                const mesh = payload as MeshHandle;
+                nodeCount = mesh.nodeCount;
+                vertexCount = mesh.vertexCount;
+                triangleCount = mesh.triangleCount;
+                console.log('[ui] metrics', { nodeCount, vertexCount, triangleCount });
                 if (sceneManager) {
-                    sceneManager.updateGeometry(nodeCount);
+                    sceneManager.updateGeometry(mesh);
                 }
             } else if (type === 'error') {
                 status = `Error: ${payload}`;
@@ -47,6 +56,7 @@
 
     function compile() {
         if (worker && status !== 'Initializing...') {
+            console.log('[ui] compile() called with source:', source);
             status = 'Compiling...';
             worker.postMessage({ type: 'compile', payload: source });
         }
@@ -60,7 +70,9 @@
             Status: {status}
         </div>
         <div class="metrics">
-            Nodes: {nodeCount}
+            Nodes: {nodeCount}<br />
+            Vertices: {vertexCount}<br />
+            Triangles: {triangleCount}
         </div>
         <textarea 
             bind:value={source} 

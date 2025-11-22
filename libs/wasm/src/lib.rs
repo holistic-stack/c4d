@@ -80,6 +80,9 @@ pub fn compile_and_count_nodes_internal(
 
 mod diagnostics;
 
+#[cfg(target_arch = "wasm32")]
+mod libc_shim;
+
 pub use diagnostics::{Diagnostic, DiagnosticList, Severity};
 
 /// Mesh handle returned from compilation.
