@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { RenderableMesh } from '$lib/wasm/mesh-wrapper';
 
 export class SceneManager {
     private scene: THREE.Scene;
     private camera: THREE.PerspectiveCamera;
     private renderer: THREE.WebGLRenderer;
     private controls: OrbitControls;
-    private cube: THREE.Mesh;
+    private mesh: THREE.Mesh;
 
     constructor(canvas: HTMLCanvasElement) {
         this.scene = new THREE.Scene();
@@ -34,11 +35,15 @@ export class SceneManager {
         directionalLight.position.set(1, 1, 1);
         this.scene.add(directionalLight);
 
-        // Add a placeholder cube
-        const geometry = new THREE.BoxGeometry();
-        const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-        this.cube = new THREE.Mesh(geometry, material);
-        this.scene.add(this.cube);
+        // Initial placeholder geometry (empty)
+        const geometry = new THREE.BufferGeometry();
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            side: THREE.DoubleSide,
+            flatShading: true
+        });
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.scene.add(this.mesh);
 
         // Handle resize
         window.addEventListener('resize', () => this.onResize());
@@ -59,12 +64,24 @@ export class SceneManager {
         this.renderer.render(this.scene, this.camera);
     }
 
-    public updateGeometry(nodeCount: number) {
-        // For now, just log the count or change color/scale based on it
-        console.log(`Updating geometry with node count: ${nodeCount}`);
+    /**
+     * Updates the scene with new mesh data.
+     * Replaces the old node-count based scaling with actual geometry reconstruction.
+     */
+    public updateGeometry(meshData: RenderableMesh) {
+        // Dispose of old geometry to prevent memory leaks
+        this.mesh.geometry.dispose();
 
-        // Visual feedback: scale the cube based on node count (clamped)
-        const scale = Math.min(Math.max(nodeCount, 0.5), 5);
-        this.cube.scale.set(scale, scale, scale);
+        const geometry = new THREE.BufferGeometry();
+
+        // Set attributes
+        geometry.setAttribute('position', new THREE.BufferAttribute(meshData.vertices, 3));
+        geometry.setIndex(new THREE.BufferAttribute(meshData.indices, 1));
+
+        // Compute normals for lighting
+        geometry.computeVertexNormals();
+
+        // Update the mesh geometry
+        this.mesh.geometry = geometry;
     }
 }

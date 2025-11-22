@@ -1,4 +1,4 @@
-import init, { compile_and_count_nodes } from '$wasm/wasm.js';
+import init, { compile_and_count_nodes, compile_and_render } from '$wasm/wasm.js';
 import { wasmNotInitializedMessage } from '$lib/constants/app-config';
 
 /**
@@ -19,6 +19,14 @@ export type WasmInitParameter = Parameters<typeof init>[0];
 export interface MeshHandle {
     /** Total number of nodes produced by the current evaluator pipeline. */
     nodeCount: number;
+}
+
+/**
+ * Mesh data containing vertices and indices for rendering.
+ */
+export interface RenderableMesh {
+    vertices: Float32Array;
+    indices: Uint32Array;
 }
 
 /**
@@ -61,6 +69,33 @@ export function compile(source: string): MeshHandle {
 
     const count = compile_and_count_nodes(source);
     return { nodeCount: count };
+}
+
+/**
+ * Compiles OpenSCAD source through the wasm evaluator and returns mesh data.
+ *
+ * @example
+ * await initWasm();
+ * const mesh = compileMesh('cube(1);');
+ * console.log(mesh.vertices.length);
+ */
+export function compileMesh(source: string): RenderableMesh {
+    if (!wasmInitialized) {
+        throw new Error(wasmNotInitializedMessage);
+    }
+
+    const handle = compile_and_render(source);
+
+    // Extract data before freeing the handle
+    const vertices = handle.vertices();
+    const indices = handle.indices();
+
+    handle.free();
+
+    return {
+        vertices: new Float32Array(vertices),
+        indices: new Uint32Array(indices)
+    };
 }
 
 /**
