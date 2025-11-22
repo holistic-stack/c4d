@@ -134,6 +134,7 @@ impl MeshHandle {
 ///
 /// # Errors
 /// Returns a JavaScript error containing diagnostics if compilation fails.
+/// The error object has the shape `{ diagnostics: Diagnostic[] }`.
 ///
 /// # Examples
 /// ```no_run
@@ -142,20 +143,22 @@ impl MeshHandle {
 /// //   const mesh = await compile_and_render("cube([2, 2, 2]);");
 /// //   console.log("Vertices:", mesh.vertex_count());
 /// // } catch (error) {
-/// //   console.error("Compilation failed:", error);
+/// //   const diagnostics = error.diagnostics;
+/// //   for (const d of diagnostics) {
+/// //     console.error(d.message(), d.start(), d.end());
+/// //   }
 /// // }
 /// ```
 #[wasm_bindgen]
 pub fn compile_and_render(source: &str) -> Result<MeshHandle, JsValue> {
-    compile_and_render_internal(source)
-        .map_err(|diagnostics| {
-            // Convert diagnostics to a JS-friendly error message
-            let messages: Vec<String> = diagnostics
-                .iter()
-                .map(|d| format!("{}", d))
-                .collect();
-            JsValue::from_str(&messages.join("\n"))
-        })
+    match compile_and_render_internal(source) {
+        Ok(mesh) => Ok(mesh),
+        Err(rust_diags) => {
+            let wasm_diags = map_rust_diagnostics(rust_diags);
+            let payload = build_diagnostics_error_payload(wasm_diags);
+            Err(payload)
+        }
+    }
 }
 
 /// Internal implementation of compile_and_render.
@@ -172,6 +175,28 @@ pub fn compile_and_render_internal(
         vertices: buffers.vertices,
         indices: buffers.indices,
     })
+}
+
+/// Maps Rust diagnostics to WASM-visible diagnostics.
+fn map_rust_diagnostics(diagnostics: Vec<openscad_ast::Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics.into_iter().map(Diagnostic::from).collect()
+}
+
+/// Builds a JavaScript error object containing diagnostics.
+fn build_diagnostics_error_payload(diagnostics: Vec<Diagnostic>) -> JsValue {
+    use js_sys::{Array, Object, Reflect};
+
+    let array = Array::new();
+    for diag in diagnostics {
+        // Convert to plain JS object to ensure it can be transferred between threads
+        array.push(&diag.to_js_object());
+    }
+
+    let obj = Object::new();
+    Reflect::set(&obj, &JsValue::from_str("diagnostics"), &array)
+        .expect("failed to set diagnostics property");
+
+    JsValue::from(obj)
 }
 
 #[cfg(test)]

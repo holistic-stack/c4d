@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { SceneManager } from '../components/viewer/scene-manager';
     import PipelineWorker from '../worker/pipeline.worker?worker';
-    import type { MeshHandle } from '../lib/wasm/mesh-wrapper';
+    import { Severity, type MeshHandle, type DiagnosticData } from '../lib/wasm/mesh-wrapper';
 
     let canvas: HTMLCanvasElement;
     let sceneManager: SceneManager;
@@ -12,6 +12,7 @@
     let nodeCount = 0;
     let vertexCount = 0;
     let triangleCount = 0;
+    let diagnostics: DiagnosticData[] = [];
 
     onMount(async () => {
         // Initialize Worker
@@ -27,6 +28,7 @@
                 compile();
             } else if (type === 'compile_success') {
                 status = 'Compiled';
+                diagnostics = []; // Clear previous diagnostics
                 const mesh = payload as MeshHandle;
                 nodeCount = mesh.nodeCount;
                 vertexCount = mesh.vertexCount;
@@ -35,6 +37,10 @@
                 if (sceneManager) {
                     sceneManager.updateGeometry(mesh);
                 }
+            } else if (type === 'compile_error') {
+                status = 'Error';
+                diagnostics = payload as DiagnosticData[];
+                console.error('Compilation diagnostics:', diagnostics);
             } else if (type === 'error') {
                 status = `Error: ${payload}`;
                 console.error(payload);
@@ -61,14 +67,38 @@
             worker.postMessage({ type: 'compile', payload: source });
         }
     }
+
+    function getSeverityClass(severity: number): string {
+        switch (severity) {
+            case Severity.Error: return 'error';
+            case Severity.Warning: return 'warning';
+            case Severity.Info: return 'info';
+            default: return 'info';
+        }
+    }
 </script>
 
 <div class="container">
     <div class="sidebar">
         <h1>Playground</h1>
-        <div class="status" class:error={status.startsWith('Error')}>
+        <div class="status" class:error={status.startsWith('Error') || status === 'Error'}>
             Status: {status}
         </div>
+
+        {#if diagnostics.length > 0}
+            <div class="diagnostics">
+                {#each diagnostics as diag}
+                    <div class="diagnostic {getSeverityClass(diag.severity)}">
+                        <span class="message">{diag.message}</span>
+                        <span class="location">[{diag.start}:{diag.end}]</span>
+                        {#if diag.hint}
+                            <div class="hint">{diag.hint}</div>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+        {/if}
+
         <div class="metrics">
             Nodes: {nodeCount}<br />
             Vertices: {vertexCount}<br />
@@ -134,6 +164,49 @@
 
     .status.error {
         color: #f88;
+    }
+
+    .diagnostics {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-height: 200px;
+        overflow-y: auto;
+        background: #333;
+        padding: 0.5rem;
+        border: 1px solid #555;
+    }
+
+    .diagnostic {
+        font-size: 0.8rem;
+        padding: 0.25rem;
+        background: #422;
+        border-left: 3px solid #f44;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .diagnostic.warning {
+        background: #442;
+        border-left-color: #cc4;
+    }
+
+    .diagnostic.info {
+        background: #224;
+        border-left-color: #44f;
+    }
+
+    .location {
+        color: #aaa;
+        font-size: 0.75rem;
+        margin-top: 0.1rem;
+    }
+
+    .hint {
+        color: #aaa;
+        font-style: italic;
+        margin-top: 0.1rem;
+        font-size: 0.75rem;
     }
 
     button {
