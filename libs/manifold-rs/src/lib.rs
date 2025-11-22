@@ -19,6 +19,7 @@ pub mod export;
 pub mod from_ir;
 pub mod manifold;
 pub mod primitives;
+pub mod transform;
 
 pub use config::KernelConfig;
 pub use core::vec3::Vec3;
@@ -26,6 +27,7 @@ pub use error::ManifoldError;
 pub use export::MeshBuffers;
 pub use from_ir::from_source;
 pub use manifold::Manifold;
+pub use transform::apply_transform;
 
 /// Returns the default kernel configuration.
 ///

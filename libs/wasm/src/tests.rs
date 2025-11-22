@@ -72,3 +72,24 @@ fn compile_and_render_mesh_buffers_valid() {
         assert!(idx < vertex_count, "Index {} out of range", idx);
     }
 }
+
+/// Ensures transforms applied in the evaluator propagate through manifold-rs and the WASM layer.
+#[test]
+fn compile_and_render_translated_cube_updates_vertices() {
+    let mesh = compile_and_render_internal("translate([1,0,0]) cube(1);")
+        .expect("compilation succeeds");
+
+    let vertices = mesh.vertices();
+    assert_eq!(vertices.len(), 24);
+
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    for chunk in vertices.chunks(3) {
+        let x = chunk[0];
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+    }
+
+    assert!((min_x - 1.0).abs() < 1e-5, "min_x should start at 1: {min_x}");
+    assert!((max_x - 2.0).abs() < 1e-5, "max_x should end at 2: {max_x}");
+}

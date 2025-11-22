@@ -161,7 +161,6 @@ fn parse_transform_chain(
             // We need to look inside "statement" node because it's a wrapper in CST
             // Or maybe parse_statement handles it.
             // Let's look at the child of "statement".
-            let mut cursor = body.walk();
             // "statement" is a choice, so it has 1 child.
             if let Some(child) = body.named_child(0) {
                 parse_statement(&child, source)?

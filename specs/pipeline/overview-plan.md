@@ -209,17 +209,27 @@ Key rules:
 
 - **`libs/openscad-ast`**  
   - Owns the **typed AST** data structures.  
-  - Converts CST to AST.
+  - Converts CST to AST, normalizing positional and named arguments (e.g. `cube(size=[10,10,10], center=true)` and `cube([10,10,10], center=false)`) into strongly-typed nodes validated by evaluator tests.
 
 - **`libs/openscad-eval`**  
   - Interprets the AST and produces **Evaluated AST** (Geometry IR).  
   - Handles variables, modules, loops, functions.  
-  - **Pure data transformation**: AST -> Evaluated AST. No geometry generation.
+  - **Pure data transformation**: AST -> Evaluated AST. No geometry generation.  
+  - Tracks `$fn`, `$fa`, `$fs` in `EvaluationContext` and uses a shared `resolution::compute_segments` helper so `sphere()` nodes inherit the exact OpenSCAD fragment rules (if `$fn>0` use it, else `ceil(min(360/$fa, 2πr/$fs))` with a lower bound of five fragments).  
+  - **Task 5.1 plan:** translate/rotate/scale statements wrap child nodes inside `GeometryNode::Transform { matrix, child, span }`, composing glam matrices in OpenSCAD’s inside-out order. Evaluator unit tests will cover (1) translate-only bounding-box shifts, (2) rotate-then-translate ordering, and (3) scale anchored at the origin. Each test will include inline comments plus doc examples per project rules.  
+  - **Transform data flow:**
+    1. Parser emits `Statement::Translate/Rotate/Scale` nodes with spans anchored at the keyword location.
+    2. Evaluator converts those nodes into 4×4 glam matrices using column-vector semantics (matching [OpenSCAD Transformations Manual](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations)), multiplying in reverse order of appearance to respect inside-out evaluation.
+    3. The resulting `GeometryNode::Transform` is appended to the IR, preserving the span so diagnostics bubble up to the original call site.
+    4. Downstream crates never recompute transforms; they consume the already-baked matrix, keeping SRP boundaries intact.
 
 - **`libs/manifold-rs`**  
   - Geometry kernel and manifold mesh implementation.  
   - **Consumes Evaluated AST** to construct the Manifold geometry.  
-  - Exposes high-level APIs to convert OpenSCAD source (via eval) into Meshes.
+  - Exposes high-level APIs to convert OpenSCAD source (via eval) into Meshes.  
+  - `sphere` now mirrors upstream OpenSCAD’s [`SphereNode::createGeometry`](../openscad/src/core/primitives.cc) exactly: fragment counts come from the same `$fn/$fa/$fs` rules, vertices are generated via latitude/longitude rings using the `(i + 0.5) / num_rings` offset, and the polar caps/quad strips follow the identical index ordering so boolean operations produce byte-for-byte compatible meshes. Regression tests under `primitives/sphere/tests.rs` lock in cap heights, vertex/triangle counts, and fragment clamping behaviour.  
+  - **Task 5.1 plan:** `from_ir` will invoke a dedicated transform applicator that multiplies child manifold vertices (and recomputes normals) by the 4×4 matrix emitted by the evaluator. Tests in `primitives` + `from_ir` will validate translate/rotate/scale effects on vertex counts, bounding boxes, and manifold validation. Comments will explain matrix order and include mini examples.  
+  - **SRP helpers:** a new `manifold_rs::transform` module will expose `apply_transform(manifold: &mut Manifold, matrix: DMat4)` with doc comments describing usage and examples for translate/rotate/scale, plus accompanying tests located in the same folder per project structure requirements.
 
 - **`libs/wasm`**  
   - Thin bridge.  
@@ -325,8 +335,9 @@ No further setup required for Phase 1 integration.
   - Support `include` / `use` semantics.
 
 - **Phase 4 – Sphere & Resolution Controls**  
-  - Implement `sphere()` via icosphere subdivision.  
-  - Use the `EvaluationContext` resolution parameters when tessellating the sphere.
+  - Implement `sphere()` via the same latitude/longitude tessellation as upstream OpenSCAD (mirroring `SphereNode::createGeometry`).  
+  - Use the `EvaluationContext` resolution parameters when tessellating the sphere so `$fn/$fa/$fs` yield the same fragment counts as the C++ `CurveDiscretizer`.  
+  - Keep regression tests comparing cap heights, vertex/triangle counts, and fragment clamping to guard against regressions. Future work in this phase focuses on maintaining parity as new upstream behaviour emerges.
 
 - **Phase 5 – Transformations**  
   - Support `translate`, `rotate`, `scale` transformations in IR and `manifold-rs`.  

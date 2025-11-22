@@ -5,6 +5,7 @@
 use crate::{MeshBuffers, Vec3, Manifold};
 use crate::primitives::cube::cube;
 use crate::primitives::sphere::Sphere;
+use crate::transform::apply_transform;
 use openscad_eval::{Evaluator, InMemoryFilesystem, GeometryNode, EvaluationError};
 use openscad_ast::{Diagnostic, Span};
 
@@ -35,19 +36,24 @@ pub fn from_source(source: &str) -> Result<MeshBuffers, Vec<Diagnostic>> {
     })?;
 
     if nodes.is_empty() {
-        return Ok(MeshBuffers {
-            vertices: Vec::new(),
-            indices: Vec::new(),
-        });
+        return Ok(MeshBuffers::new());
     }
 
-    // For Task 1.1, we process the first node.
-    // Future tasks will handle boolean unions of multiple nodes.
-    let node = &nodes[0];
-    
-    let manifold = convert_node(node)?;
+    let mut combined = MeshBuffers::new();
+    for node in &nodes {
+        let manifold = convert_node(node)?;
+        append_mesh(&mut combined, &manifold.to_mesh_buffers());
+    }
 
-    Ok(manifold.to_mesh_buffers())
+    Ok(combined)
+}
+
+fn append_mesh(target: &mut MeshBuffers, source: &MeshBuffers) {
+    let vertex_offset = target.vertex_count() as u32;
+    target.vertices.extend_from_slice(&source.vertices);
+    target
+        .indices
+        .extend(source.indices.iter().map(|idx| idx + vertex_offset));
 }
 
 fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
@@ -58,13 +64,17 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
                      vec![Diagnostic::error(format!("Manifold error: {}", e), *span)]
                  })
         }
-        GeometryNode::Sphere { radius, segments, .. } => {
-            let sphere_gen = Sphere::new(*radius, *segments);
-            Ok(sphere_gen.to_manifold())
+        GeometryNode::Sphere { radius, segments, span } => {
+            let generator = Sphere::new(*radius, *segments).map_err(|err| {
+                vec![Diagnostic::error(format!("Manifold error: {}", err), *span)]
+            })?;
+            generator.to_manifold().map_err(|err| {
+                vec![Diagnostic::error(format!("Manifold error: {}", err), *span)]
+            })
         }
-        GeometryNode::Transform { matrix, child, .. } => {
+        GeometryNode::Transform { matrix, child, span: _ } => {
             let mut m = convert_node(child)?;
-            m.transform(*matrix);
+            apply_transform(&mut m, *matrix);
             Ok(m)
         }
     }
@@ -73,6 +83,25 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bounding_box_from_buffers(buffers: &MeshBuffers) -> (Vec3, Vec3) {
+        let mut min = Vec3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut max = Vec3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+
+        for chunk in buffers.vertices.chunks(3) {
+            let x = chunk[0] as f64;
+            let y = chunk[1] as f64;
+            let z = chunk[2] as f64;
+            min.x = min.x.min(x);
+            min.y = min.y.min(y);
+            min.z = min.z.min(z);
+            max.x = max.x.max(x);
+            max.y = max.y.max(y);
+            max.z = max.z.max(z);
+        }
+
+        (min, max)
+    }
 
     #[test]
     fn test_cube_generation() {
@@ -88,6 +117,14 @@ mod tests {
     }
 
     #[test]
+    fn test_multiple_top_level_nodes_are_combined() {
+        let mesh = from_source("cube(2); translate([10,10,10]) cube([10,20,30]);")
+            .expect("compilation succeeds");
+        assert_eq!(mesh.vertex_count(), 16);
+        assert_eq!(mesh.triangle_count(), 24);
+    }
+
+    #[test]
     fn test_invalid_source() {
         let result = from_source("cube(");
         assert!(result.is_err());
@@ -96,24 +133,45 @@ mod tests {
     #[test]
     fn test_sphere_generation() {
         let mesh = from_source("sphere(10);").expect("compilation succeeds");
-        // Expect octahedron (6 vertices, 8 faces)
-        assert_eq!(mesh.vertex_count(), 6);
-        assert_eq!(mesh.triangle_count(), 8);
+        assert!(mesh.vertex_count() > 6);
+        assert!(mesh.triangle_count() > 8);
     }
 
     #[test]
     fn test_translate_generation() {
-        // translate([10,0,0]) cube(1);
-        // Center of cube(1) is (0.5, 0.5, 0.5) or (0,0,0) depending on center.
-        // Default cube(1) is non-centered: [0,1]^3.
-        // Translated by [10,0,0] -> [10,11] x [0,1] x [0,1].
-        // Bounds should be min(10,0,0), max(11,1,1).
-
         let mesh = from_source("translate([10, 0, 0]) cube(1);").expect("compilation succeeds");
-
-        // Can't check bounds directly on MeshBuffers easily without parsing them back.
-        // But we can rely on `transform` unit tests in Manifold (TODO).
-        // Here just ensure it doesn't crash.
         assert_eq!(mesh.vertex_count(), 8);
+    }
+
+    #[test]
+    fn test_translated_cube_bounding_box() {
+        let mesh = from_source("translate([5, 0, 0]) cube(2);").expect("compilation succeeds");
+        assert_eq!(mesh.vertex_count(), 8);
+        assert_eq!(mesh.triangle_count(), 12);
+        let (min, max) = bounding_box_from_buffers(&mesh);
+        assert_eq!(min, Vec3::new(5.0, 0.0, 0.0));
+        assert_eq!(max, Vec3::new(7.0, 2.0, 2.0));
+    }
+
+    #[test]
+    fn test_rotated_cube_bounding_box_swaps_axes() {
+        // rotate([0,0,90]) cube([1,2,3]) should swap X/Y extents while preserving Z.
+        let mesh = from_source("rotate([0,0,90]) cube([1,2,3]);").expect("compilation succeeds");
+        assert_eq!(mesh.vertex_count(), 8);
+        assert_eq!(mesh.triangle_count(), 12);
+        let (min, max) = bounding_box_from_buffers(&mesh);
+        assert!((min.x + 2.0).abs() < 1e-6);
+        assert!((min.y - 0.0).abs() < 1e-6);
+        assert!((min.z - 0.0).abs() < 1e-6);
+        assert!((max.x - 0.0).abs() < 1e-6);
+        assert!((max.y - 1.0).abs() < 1e-6);
+        assert!((max.z - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_scale_preserves_topology() {
+        let mesh = from_source("scale([2,3,4]) cube(1);").expect("compilation succeeds");
+        assert_eq!(mesh.vertex_count(), 8);
+        assert_eq!(mesh.triangle_count(), 12);
     }
 }

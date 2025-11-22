@@ -580,19 +580,27 @@ Represent and evaluate OpenSCAD’s resolution variables `$fn`, `$fa`, and `$fs`
 
 **Steps**
 
-1. **EvaluationContext Struct**
-   - Define an `EvaluationContext` (or similar) in `libs/openscad-eval` that tracks `$fn`, `$fa`, `$fs` along with other global/built-in parameters.
+1. **EvaluationContext Struct**  
+   - `libs/openscad-eval::evaluator::context::EvaluationContext` tracks `$fn`, `$fa`, `$fs` alongside generic variables, using defaults from `config::constants`.
+   - Expose getters/setters with doc comments and examples so future primitives can reuse the centralized configuration.
 
-2. **Propagation**
-   - Ensure parser/AST nodes that set these variables update the context correctly.  
-   - Ensure primitives like `sphere` and any resolution-sensitive operations read from this context when constructing IR.
+2. **Propagation**  
+   - Parser/AST already emit `Statement::Assignment { name: "$fn" | "$fa" | "$fs" }`; the evaluator must route these into `EvaluationContext::set_variable`.  
+   - Resolution-sensitive primitives (currently `sphere`) read from the context when constructing IR, applying the OpenSCAD formula:  
+     - If `$fn > 0`, fragments = max($fn, 3).  
+     - Otherwise, fragments = `ceil(min(360/$fa, 2πr/$fs))` with a lower bound of 5. *(References: OpenSCAD User Manual, Wikibooks “Circle resolution” section, and community write-ups on $fn/$fa/$fs.)*
 
-3. **Tests**
-   - Add evaluator tests confirming that adjusting `$fn`, `$fa`, `$fs` leads to the expected change in resolution for spheres and other affected primitives.
+3. **Tests**  
+   - Evaluator regression tests now cover:  
+     - Global `$fn` assignments affecting subsequent spheres.  
+     - Per-call `$fn` overrides.  
+     - `$fa/$fs` fallback when `$fn = 0`.  
+   - Extend tests to future primitives as they gain resolution controls.
 
 **Acceptance Criteria**
 
-- `$fn`, `$fa`, `$fs` are represented explicitly in a context struct and used consistently by resolution-sensitive primitives.
+- `$fn`, `$fa`, `$fs` live in a documented context struct and are consumed by primitives per the OpenSCAD formulas cited above.  
+- Automated tests prove changes in `$fn/$fa/$fs` alter generated `GeometryNode::Sphere` segments accordingly.
 
 ---
 
@@ -605,22 +613,30 @@ Implement a robust `sphere()` primitive with resolution managed by `$fn`, `$fa`,
 
 **Steps**
 
-1. **Manifold-RS Sphere**
-   - Implement `Sphere` construction using an octahedron base and subdivision.  
-   - Use `DEFAULT_FN` from `config.rs` when no explicit resolution is supplied.
+1. **Manifold-RS Sphere (two-phase plan)**
+   1. **Current stop-gap (icosphere)** — already implemented. Keep tests and validation in place so we have a functional primitive until parity is ready.  
+   2. **Parity target (OpenSCAD lat/long tessellation)** — Re-implement `Sphere` using the exact algorithm from upstream OpenSCAD’s [`SphereNode::createGeometry`](../openscad/src/core/primitives.cc):
+      - Port the `CurveDiscretizer` logic so `$fn/$fa/$fs` produce the same `num_fragments` and `num_rings` as C++.  
+      - Generate vertices via latitude/longitude rings using the `(i + 0.5) / num_rings` polar offset and mirror the pole fan ordering.  
+      - Emit quads/triangles in the same winding order before converting to our half-edge representation.  
+      - Maintain deterministic vertex ordering so downstream boolean ops and hashes match reference OpenSCAD output.  
+      - Add fixtures that compare small reference meshes (radius + resolution combos) against serialized data from upstream OpenSCAD to prove byte-for-byte compatibility.  
+   - Half-edge construction remains shared inside the module and `from_ir` maps `GeometryNode::Sphere` errors back into diagnostics.
 
 2. **Evaluator Context**
-   - Track `$fn`, `$fa`, `$fs` in an evaluation context struct.  
-   - Ensure they are respected when creating `GeometryNode::Sphere`.
+   - `$fn`, `$fa`, `$fs` are already tracked; the new `evaluator::resolution::compute_segments` helper converts those values into fragment counts exactly as described in the OpenSCAD docs (if `$fn>0` use it, else `ceil(min(360/$fa, 2πr/$fs))` with a minimum of five).  
+   - `Statement::Sphere` calls the helper so context assignments, per-call overrides, and defaults all produce deterministic `segments` passed into `GeometryNode::sphere`.
 
 3. **Tests**
-   - Add tests for various radius/segment combinations.  
-   - Verify `Manifold::validate()` passes.
+   - `libs/manifold-rs` includes regression tests for sphere validation, bounding boxes, and subdivision scaling.  
+   - `libs/openscad-eval` contains unit tests for the resolution helper plus evaluator scenarios where `$fn`, `$fa`, `$fs` override each other.  
+   - Doc tests capture the helper’s formula for future reference.
 
 **Acceptance Criteria**
 
 - `sphere(r=10);` produces a valid manifold with reasonable tessellation.  
-- Changing `$fn` influences the sphere resolution as expected.
+- Changing `$fn` or `$fa/$fs` influences the sphere resolution as expected, verified via evaluator tests.  
+- An additional regression suite demonstrates that the parity implementation matches OpenSCAD output for representative `$fn/$fa/$fs` combinations (vertex count, triangle count, and optional checksum comparisons).
 
 ---
 
@@ -633,20 +649,33 @@ Support `translate`, `rotate`, and `scale` transformations end-to-end.
 
 **Steps**
 
-1. **IR Representation**
-   - Add `GeometryNode::Transform(Mat4, Box<GeometryNode>)` to Geometry IR.
+1. **Evaluator (libs/openscad-eval)**  
+   - Ensure `Statement::Translate/Rotate/Scale` wrap child nodes in `GeometryNode::Transform { matrix, child, span }`, composing glam matrices in OpenSCAD’s inside-out order (comment + example in code). Use column-vector math so `translate([tx,ty,tz]) rotate([rx,ry,rz]) cube(1);` becomes `T * R * cube`, meaning the cube is rotated first, then translated, matching [OpenSCAD Transformations Manual](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations).  
+   - Add evaluator tests documenting: (a) translate-only offset affecting bounding box, (b) rotate+translate order (rotate applied before translate), (c) scale anchored at origin vs. centered geometry. Each test must include inline comments and doc examples.
 
-2. **Evaluator Mapping**
-   - Map AST transformation constructs (`translate(...)`, `rotate(...)`, `scale(...)`) into IR nodes.
+2. **IR + manifold bridge**  
+   - Extend `libs/manifold-rs::from_ir` with a dedicated transform applicator that multiplies vertex positions (and recomputes normals) by the evaluator-provided 4×4 matrix.  
+   - Add SRP helper (e.g., `ManifoldTransform`) with comments explaining matrix usage, plus unit tests verifying translated, rotated, and scaled cubes keep vertex/face counts and pass `validate()`.
 
-3. **Manifold-RS Operations**
-   - Implement transform methods that apply matrices to underlying vertices.
+3. **End-to-end tests + docs**  
+   - Add integration test: `translate([10,0,0]) sphere(5);` verifying bounding box shift; add rotate/scale combos plus a compound snippet such as:
+
+     ```
+     translate([1,2,3]) rotate([0,90,0]) scale([2,1,1]) cube(4);
+     ```
+
+     Document in comments that evaluation applies scale → rotate → translate even though the code is written translate → rotate → scale.  
+   - Update `specs/pipeline/overview-plan.md` and this task section with diagrams / code snippets showing matrix order, referencing OpenSCAD manual links.  
+   - Document acceptance criteria in `tasks.md`: transforms compose correctly, evaluator/manifold tests cover ordering and pivot semantics, and diagnostics stay explicit (no silent fallbacks).
 
 4. **Span Propagation**
    - Ensure spans for transformed geometry still map back to originating nodes for diagnostics.
 
 **Acceptance Criteria**
 
+- Transformations can be layered; child nodes are evaluated with the correct matrix composition.  
+- Bounding boxes and vertex counts remain consistent after transformations.  
+- Test coverage: evaluator unit tests, manifold integration tests, and documentation updates.
 - Complex transform chains (e.g. `translate([1,2,3]) rotate([0,90,0]) cube(5);`) render correctly.  
 - Diagnostics still point to the correct source spans.
 
