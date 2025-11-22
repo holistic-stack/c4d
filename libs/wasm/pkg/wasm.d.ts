@@ -1,38 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * Installs a panic hook that forwards Rust panics to the browser console.
- *
- * # Examples
- * ```no_run
- * // In JavaScript: import and call once at startup.
- * // import { init_panic_hook } from "wasm";
- * // init_panic_hook();
- * ```
- */
-export function init_panic_hook(): void;
-/**
- * Compiles OpenSCAD source and renders it to a mesh.
- *
- * This is the main entry point for the pipeline. It parses the source,
- * evaluates it, and generates a mesh suitable for GPU rendering.
- *
- * # Errors
- * Returns a JavaScript error containing diagnostics if compilation fails.
- *
- * # Examples
- * ```no_run
- * // In JavaScript:
- * // try {
- * //   const mesh = await compile_and_render("cube([2, 2, 2]);");
- * //   console.log("Vertices:", mesh.vertex_count());
- * // } catch (error) {
- * //   console.error("Compilation failed:", error);
- * // }
- * ```
- */
-export function compile_and_render(source: string): MeshHandle;
-/**
  * Returns the default tessellation segment count used by the geometry
  * pipeline. This is currently a thin wrapper around a shared constant.
  *
@@ -62,6 +30,42 @@ export function default_segments(): number;
  */
 export function compile_and_count_nodes(source: string): number;
 /**
+ * Compiles OpenSCAD source and renders it to a mesh.
+ *
+ * This is the main entry point for the pipeline. It parses the source,
+ * evaluates it, and generates a mesh suitable for GPU rendering.
+ *
+ * # Errors
+ * Returns a JavaScript error containing diagnostics if compilation fails.
+ * The error object has the shape `{ diagnostics: Diagnostic[] }`.
+ *
+ * # Examples
+ * ```no_run
+ * // In JavaScript:
+ * // try {
+ * //   const mesh = await compile_and_render("cube([2, 2, 2]);");
+ * //   console.log("Vertices:", mesh.vertex_count());
+ * // } catch (error) {
+ * //   const diagnostics = error.diagnostics;
+ * //   for (const d of diagnostics) {
+ * //     console.error(d.message(), d.start(), d.end());
+ * //   }
+ * // }
+ * ```
+ */
+export function compile_and_render(source: string): MeshHandle;
+/**
+ * Installs a panic hook that forwards Rust panics to the browser console.
+ *
+ * # Examples
+ * ```no_run
+ * // In JavaScript: import and call once at startup.
+ * // import { init_panic_hook } from "wasm";
+ * // init_panic_hook();
+ * ```
+ */
+export function init_panic_hook(): void;
+/**
  * Diagnostic severity for JavaScript.
  */
 export enum Severity {
@@ -84,6 +88,13 @@ export class Diagnostic {
   private constructor();
   free(): void;
   [Symbol.dispose](): void;
+  /**
+   * Converts this diagnostic to a plain JavaScript object.
+   *
+   * This is useful for passing data between the worker and main thread,
+   * as wasm-bindgen wrappers cannot be transferred.
+   */
+  to_js_object(): any;
   /**
    * Returns the end position in the source.
    */
@@ -163,15 +174,6 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
-  readonly __wbg_meshhandle_free: (a: number, b: number) => void;
-  readonly compile_and_count_nodes: (a: number, b: number) => [number, number, number];
-  readonly compile_and_render: (a: number, b: number) => [number, number, number];
-  readonly default_segments: () => number;
-  readonly meshhandle_indices: (a: number) => [number, number];
-  readonly meshhandle_triangle_count: (a: number) => number;
-  readonly meshhandle_vertex_count: (a: number) => number;
-  readonly meshhandle_vertices: (a: number) => [number, number];
-  readonly init_panic_hook: () => void;
   readonly abort: () => void;
   readonly calloc: (a: number, b: number) => number;
   readonly clock: () => number;
@@ -212,6 +214,15 @@ export interface InitOutput {
   readonly iswdigit: (a: number) => number;
   readonly iswspace: (a: number) => number;
   readonly write: (a: number, b: number, c: number) => number;
+  readonly __wbg_meshhandle_free: (a: number, b: number) => void;
+  readonly compile_and_count_nodes: (a: number, b: number) => [number, number, number];
+  readonly compile_and_render: (a: number, b: number) => [number, number, number];
+  readonly default_segments: () => number;
+  readonly meshhandle_indices: (a: number) => [number, number];
+  readonly meshhandle_triangle_count: (a: number) => number;
+  readonly meshhandle_vertex_count: (a: number) => number;
+  readonly meshhandle_vertices: (a: number) => [number, number];
+  readonly init_panic_hook: () => void;
   readonly __wbg_diagnostic_free: (a: number, b: number) => void;
   readonly __wbg_diagnosticlist_free: (a: number, b: number) => void;
   readonly diagnostic_end: (a: number) => number;
@@ -219,12 +230,15 @@ export interface InitOutput {
   readonly diagnostic_message: (a: number) => [number, number];
   readonly diagnostic_severity: (a: number) => number;
   readonly diagnostic_start: (a: number) => number;
+  readonly diagnostic_to_js_object: (a: number) => any;
   readonly diagnosticlist_get: (a: number, b: number) => number;
   readonly diagnosticlist_is_empty: (a: number) => number;
   readonly diagnosticlist_len: (a: number) => number;
-  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
+  readonly __wbindgen_exn_store: (a: number) => void;
+  readonly __externref_table_alloc: () => number;
   readonly __wbindgen_externrefs: WebAssembly.Table;
   readonly __externref_table_dealloc: (a: number) => void;
   readonly __wbindgen_start: () => void;
