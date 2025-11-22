@@ -220,7 +220,9 @@ Key rules:
 - **`libs/wasm`**  
   - Thin bridge.  
   - Calls `manifold-rs` to process code and return mesh buffers.  
-  - No mesh logic, no parsing logic.
+  - No mesh logic, no parsing logic.  
+  - Produces the **only browser-facing WASM bundle**: the wasm-bindgen output under `libs/wasm/pkg` (for example `wasm.js` + `wasm_bg.wasm`), analogous to Tree-sitter's `web-tree-sitter.{js,wasm}` pair.  
+  - Is consumed by TypeScript via a small wrapper (for example `initWasm`, `compile(...)`) that mirrors `web-tree-sitter`'s `Parser.init()` + `parser.parse()` pattern.
 
 - **`libs/openscad-lsp`**  
   - Rust-native Language Server built with `tower-lsp`.  
@@ -251,6 +253,33 @@ libs/wasm              (MeshHandle)
         ▼
 apps/playground
 ```
+
+### 3.5 Minimal `cube(10);` Pipeline (Simplified)
+
+For the initial tracer-bullet implementation, all layers must participate in a minimal `cube(10);` flow with no shortcuts:
+
+- **Playground**  
+  - The user edits `cube(10);` in the OpenSCAD editor and triggers a compile/render action.
+- **`libs/wasm`**  
+  - Receives the source string and exposes a single entry point (for example `compile_and_render` or `compile_and_count_nodes`).  
+  - Forwards the raw OpenSCAD source to `libs/manifold-rs` as the orchestrator of the geometry pipeline.
+- **`libs/manifold-rs`**  
+  - Calls into `libs/openscad-eval` with the original OpenSCAD source string `cube(10);` to obtain an **evaluated/flattened AST**.  
+  - Transforms this evaluated AST into a mesh and returns it to `libs/wasm`.
+- **`libs/openscad-eval`**  
+  - Invokes `libs/openscad-ast` with the original source so that the AST layer can obtain a typed AST from the CST.  
+  - Decides whether evaluation is required for the current AST, evaluates and resolves it, and returns an evaluated/flattened AST to `libs/manifold-rs`.
+- **`libs/openscad-ast`**  
+  - Calls `libs/openscad-parser` with `cube(10);` to obtain a Tree-sitter CST.  
+  - Transforms the CST into a typed AST and returns it to `libs/openscad-eval`.
+- **`libs/openscad-parser`**  
+  - Parses the OpenSCAD source into a CST using the Tree-sitter grammar and returns it to `libs/openscad-ast`.
+- **Back up to geometry and rendering**  
+  - `libs/manifold-rs` converts the evaluated AST for `cube(10);` into a mesh and returns this mesh to `libs/wasm`.  
+  - `libs/wasm` returns the generated mesh to the Playground as typed buffers/handles.  
+  - The Playground converts the mesh buffers into Three.js geometry and renders the cube.
+
+This minimal vertical slice is the reference "happy path" for all future primitives and features.
 
 ---
 
@@ -367,13 +396,17 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
   - All raw pointer logic lives in a small, well-tested TS wrapper module.  
   - The wrapper returns higher-level objects (e.g. `Mesh`) with explicit `dispose()`/`free()` methods and/or `FinalizationRegistry` for safety.
 
+- **WASM Runtime Bundle**  
+  - The only browser-facing WASM entrypoint is the wasm-bindgen glue in `libs/wasm/pkg/wasm.js` and its `wasm_bg.wasm` binary, consumed via the `$wasm` alias in `apps/playground`.  
+  - Build tooling such as `scripts/build-wasm.sh` and any Node-based helper (for example `build-wasm.js`) is strictly CLI-only and must never be imported into browser bundles, mirroring Tree-sitter's separation between its `binding_web` runtime and `script/build.js`.
+
 - **WASM Parallelism**  
   - Where browser support allows, enable WASM threads + shared memory so `rayon` can run in parallel inside `manifold-rs` for heavy kernels.
 
-- **Local WASM Build**  
-  - All `libs/wasm` builds (and any other `wasm32-unknown-unknown` artifacts) run via the local Rust toolchain using `scripts/build-wasm.sh`.  
-  - The helper ensures the `wasm32-unknown-unknown` target and matching `wasm-bindgen` version are installed, respects `WASI_SDK_PATH`, and emits artifacts into `libs/wasm/pkg`.  
-  - `apps/playground` pnpm scripts (e.g. `pnpm build:wasm`) call the same helper so browser assets stay in sync.
+- **Local WASM Build & Distribution**  
+  - `libs/wasm` is built for the `wasm32-unknown-unknown` target via dedicated helpers (`scripts/build-wasm.sh` on Unix-like systems and a Node CLI equivalent on Windows, such as `build-wasm.js`).  
+  - These helpers ensure the `wasm32-unknown-unknown` target and a compatible `wasm-bindgen` CLI are installed, respect `WASI_SDK_PATH` when compiling any C/C++ dependencies, run `cargo build --release -p wasm --target wasm32-unknown-unknown`, and invoke `wasm-bindgen --target web` to emit artifacts into `libs/wasm/pkg`.  
+  - `apps/playground` pnpm scripts (for example `pnpm build:wasm`) call these helpers so that the `libs/wasm/pkg/wasm.js` + `wasm_bg.wasm` bundle used in the browser is always up to date.
 
 ### 5.3 Documentation & Project Hygiene
 

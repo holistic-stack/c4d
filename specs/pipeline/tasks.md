@@ -347,6 +347,36 @@ Ensure all future `libs/manifold-rs` implementations follow a consistent, mechan
 
 - Code reviews for new `libs/manifold-rs` features explicitly check against these guidelines (half-edge representation, parallelism, safety, error handling, testing, robust predicates).
 - New public boolean APIs in `libs/manifold-rs` (`boolean`, `union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
+### Task 1.6 – WASM Runtime Packaging (Tree-sitter Style)
+
+**Goal**  
+Align the `libs/wasm` web distribution with Tree-sitter's `web-tree-sitter` pattern: a single JS entrypoint with a co-located `.wasm` binary and a clear async initialization API, while keeping build tooling Node-only.  
+
+**Steps**
+
+1. **Runtime Bundle Contract**  
+   - Treat `libs/wasm/pkg` as the only browser-facing WASM distribution: it contains the wasm-bindgen glue (`wasm.js`) and the compiled binary (`wasm_bg.wasm`).  
+   - Import this bundle in the Playground exclusively via the `$wasm` alias, never from build scripts or other ad-hoc paths.  
+
+2. **TypeScript Wrapper Alignment**  
+   - Ensure `apps/playground/src/lib/wasm/mesh-wrapper.ts` exposes an `initWasm(param?: WasmInitParameter)` function that mirrors `web-tree-sitter`'s `Parser.init()` pattern:  
+     - Browser code calls `initWasm()` with no arguments and lets Vite resolve `wasm_bg.wasm`.  
+     - Tests and Node code may pass explicit module bytes or a pre-fetched module for deterministic initialization.  
+
+3. **Node-only Build Helpers**  
+   - Keep `scripts/build-wasm.sh` and any Node-based helper (for example `build-wasm.js`) as CLI-only tools that are never imported into browser bundles.  
+   - Document their intended usage in developer docs and verify no `apps/**` or `libs/**` runtime code imports these scripts.  
+
+4. **Cross-platform Wiring**  
+   - For Unix-like systems, ensure `pnpm build:wasm` in `apps/playground` calls `../../scripts/build-wasm.sh`.  
+   - For Windows, provide an equivalent workflow (for example `pnpm build:wasm:win` calling `node ../../build-wasm.js`) if needed by contributors.  
+
+**Acceptance Criteria**
+
+- `libs/wasm/pkg/wasm.js` + `wasm_bg.wasm` are the only artifacts imported into browser-facing code, and they are initialized via `initWasm()` in a way analogous to `web-tree-sitter`.  
+- All build helpers (`scripts/build-wasm.sh`, `build-wasm.js`, or equivalents) are clearly documented as Node-only and are not pulled into Vite/SvelteKit client bundles.  
+- `pnpm build:wasm` (and any platform-specific variants) consistently regenerates `libs/wasm/pkg`, and `pnpm build` in `apps/playground` completes without bundler complaints about Node built-ins.  
+
 ### Task 2.1 – Manifold-RS Cube Primitive (TDD)
 
 **Goal**  
@@ -383,11 +413,11 @@ Implement a robust cube primitive in `libs/manifold-rs` with TDD.
 ### Task 2.4 – Pipeline Integration & Error Reporting
 
 **Goal**  
-Connect source → AST → IR → (stub) Manifold and introduce structured diagnostics.
+Connect source → CST → AST → evaluated/flattened AST → Mesh through the full pipeline for a minimal `cube(10);` program, and introduce structured diagnostics.
 
 **Steps**
 
-1. **Diagnostic Type**
+1. **Diagnostic Type**  
    - Define in a shared crate or module:
 
      ```rust
@@ -399,19 +429,32 @@ Connect source → AST → IR → (stub) Manifold and introduce structured diagn
      }
      ```
 
-2. **WASM Interface**
-   - In `libs/wasm`:
-     - Expose `async fn compile_and_render(source: &str) -> Result<MeshHandle, Vec<Diagnostic>>` (exported via `wasm-bindgen` and `wasm-bindgen-futures`).
-     - For now, `MeshHandle` can be a stub or dummy when rendering is not fully implemented.
+2. **Minimal `cube(10);` Pipeline Wiring**  
+   - Implement a tracer-bullet path that exercises **every layer** as described in `overview-plan.md` §3.5:
+     - Playground sends the source string `cube(10);` to `libs/wasm`.
+     - `libs/wasm` forwards `cube(10);` into a single entry point in `libs/manifold-rs`.
+     - `libs/manifold-rs` calls `libs/openscad-eval` with the original source string.
+     - `libs/openscad-eval` calls `libs/openscad-ast` with `cube(10);`.
+     - `libs/openscad-ast` calls `libs/openscad-parser` with `cube(10);`, receives a CST, converts it to a typed AST, and returns the AST to `libs/openscad-eval`.
+     - `libs/openscad-eval` decides whether evaluation is required, evaluates and resolves the AST, and returns an evaluated/flattened AST to `libs/manifold-rs`.
+     - `libs/manifold-rs` transforms the evaluated AST into a mesh and returns it to `libs/wasm`.
+     - `libs/wasm` returns the mesh to the Playground as typed buffers/handles, and the Playground converts it into Three.js geometry and renders the cube.
 
-3. **Playground Diagnostics**
+3. **WASM Interface**  
+   - In `libs/wasm`:
+     - Expose an async entry point such as `async fn compile_and_render(source: &str) -> Result<MeshHandle, Vec<Diagnostic>>` (exported via `wasm-bindgen` and `wasm-bindgen-futures`).
+     - Ensure this function internally follows the exact sequence above for `cube(10);` without bypassing any crate boundaries.
+     - For now, `MeshHandle` can be a stub or dummy when rendering is not fully implemented, as long as the full pipeline path is exercised.
+
+4. **Playground Diagnostics**  
    - In the worker, forward diagnostics back to the main thread.  
    - In the Playground, highlight errors using editor squiggles and an error panel.
 
 **Acceptance Criteria**
 
-- Intentionally invalid OpenSCAD code produces a list of `Diagnostic` entries with correct spans and messages.
-- The Playground shows helpful error messages instead of crashes.
+- Intentionally invalid OpenSCAD code produces a list of `Diagnostic` entries with correct spans and messages.  
+- The Playground shows helpful error messages instead of crashes.  
+- A `cube(10);` snippet traverses the **full minimal pipeline** documented in `overview-plan.md` §3.5 (Playground → `libs/wasm` → `libs/manifold-rs` → `libs/openscad-eval` → `libs/openscad-ast` → `libs/openscad-parser` → back up to `libs/manifold-rs` → `libs/wasm` → Playground), verified by integration tests or targeted logging.
 
 ---
 
