@@ -69,6 +69,26 @@ impl Diagnostic {
     pub fn hint(&self) -> Option<String> {
         self.hint.clone()
     }
+
+    /// Converts this diagnostic to a plain JavaScript object.
+    ///
+    /// This is useful for passing data between the worker and main thread,
+    /// as wasm-bindgen wrappers cannot be transferred.
+    pub fn to_js_object(&self) -> JsValue {
+        use js_sys::{Object, Reflect};
+
+        let obj = Object::new();
+        Reflect::set(&obj, &JsValue::from_str("severity"), &JsValue::from(self.severity as i32)).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(&self.message)).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("start"), &JsValue::from(self.start as f64)).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("end"), &JsValue::from(self.end as f64)).unwrap();
+
+        if let Some(hint) = &self.hint {
+            Reflect::set(&obj, &JsValue::from_str("hint"), &JsValue::from_str(hint)).unwrap();
+        }
+
+        JsValue::from(obj)
+    }
 }
 
 impl From<RustDiagnostic> for Diagnostic {

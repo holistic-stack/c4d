@@ -1,4 +1,4 @@
-import { initWasm, compile } from '../lib/wasm/mesh-wrapper';
+import { initWasm, compile, type DiagnosticData } from '../lib/wasm/mesh-wrapper';
 
 console.log('[worker] pipeline.worker loaded');
 
@@ -18,11 +18,23 @@ self.onmessage = async (event: MessageEvent) => {
             console.log('[worker] compile() result:', result);
             self.postMessage({ type: 'compile_success', payload: result });
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('[worker] error during message handling', error);
-        self.postMessage({
-            type: 'error',
-            payload: error instanceof Error ? error.message : String(error)
-        });
+
+        // Check if it's a structured diagnostic error
+        // The error thrown by compile() contains diagnostics as POJOs (DiagnosticData)
+        const errorObj = error as { diagnostics?: DiagnosticData[] };
+        if (errorObj && Array.isArray(errorObj.diagnostics)) {
+            self.postMessage({
+                type: 'compile_error',
+                payload: errorObj.diagnostics
+            });
+        } else {
+            // Fallback for other errors
+            self.postMessage({
+                type: 'error',
+                payload: error instanceof Error ? error.message : String(error)
+            });
+        }
     }
 };

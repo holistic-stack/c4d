@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 config.workspace = true
 console_error_panic_hook.workspace = true
+js-sys = "0.3"
 manifold-rs = { path = "../manifold-rs" }
 openscad-ast = { path = "../openscad-ast" }
 openscad-eval = { path = "../openscad-eval" }

@@ -18,7 +18,8 @@ fn compile_counts_single_cube_node() {
 /// Ensures invalid source surfaces explicit errors.
 #[test]
 fn compile_rejects_invalid_source() {
-    let err = compile_and_count_nodes_internal("sphere(1);").unwrap_err();
+    // Syntax error
+    let err = compile_and_count_nodes_internal("cube(1").unwrap_err();
     assert!(!err.to_string().is_empty());
 }
 
@@ -42,16 +43,16 @@ fn compile_and_render_produces_cube_mesh() {
     assert_eq!(mesh.indices().len(), 36); // 12 triangles * 3 indices
 }
 
-/// Tests that compile_and_render returns diagnostics for unsupported primitives.
+/// Tests that compile_and_render returns diagnostics for invalid code.
 #[test]
-fn compile_and_render_rejects_unsupported() {
-    let result = compile_and_render_internal("sphere(1);");
+fn compile_and_render_rejects_invalid() {
+    let result = compile_and_render_internal("unknown_module();");
     
     assert!(result.is_err());
     let diagnostics = result.unwrap_err();
-    assert_eq!(diagnostics.len(), 1);
+    assert!(!diagnostics.is_empty());
     assert_eq!(diagnostics[0].severity(), openscad_ast::Severity::Error);
-    assert!(diagnostics[0].message().contains("unsupported") || diagnostics[0].message().contains("cube"));
+    assert!(diagnostics[0].message().contains("unknown") || diagnostics[0].message().contains("module"));
 }
 
 /// Tests that mesh buffers contain valid data.
