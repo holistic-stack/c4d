@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { MeshHandle } from '../../lib/wasm/mesh-wrapper';
+import type { MeshHandle } from '../../wasm/mesh-wrapper';
 
 export class SceneManager {
     private scene: THREE.Scene;

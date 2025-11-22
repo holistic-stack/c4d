@@ -1,5 +1,6 @@
 import init, { compile_and_count_nodes, compile_and_render, Severity } from '$wasm/wasm.js';
 import { wasmNotInitializedMessage } from '$lib/constants/app-config';
+import type { CompileResult, DiagnosticData } from './diagnostics/diagnostic-data';
 
 /**
  * Supported parameter type for the wasm-bindgen initializer allowing dependency injection in tests.
@@ -27,19 +28,6 @@ export interface MeshHandle {
     vertices: Float32Array;
     /** Triangle indices referencing the vertex array. */
     indices: Uint32Array;
-}
-
-/**
- * Plain Object representation of a diagnostic message transferred from WASM.
- *
- * This interface matches the structure created by `Diagnostic::to_js_object` in Rust.
- */
-export interface DiagnosticData {
-    severity: Severity;
-    message: string;
-    start: number;
-    end: number;
-    hint?: string;
 }
 
 /**
@@ -71,28 +59,23 @@ export async function initWasm(moduleOrPath?: WasmInitParameter): Promise<void> 
 }
 
 /**
- * Compiles OpenSCAD source through the wasm evaluator and returns metadata.
+ * Compiles OpenSCAD source through the wasm evaluator and returns a discriminated union result.
  *
  * @example
  * await initWasm();
- * try {
- *   const result = compile('cube(1);');
- *   console.log(result.nodeCount);
- * } catch (e) {
- *   // Handle CompileError
+ * const result = compile('cube(1);');
+ * if (result.type === 'success') {
+ *   console.log(result.data.nodeCount);
+ * } else {
+ *   console.error(result.diagnostics);
  * }
  */
-export function compile(source: string): MeshHandle {
+export function compile(source: string): CompileResult<MeshHandle> {
     if (!wasmInitialized) {
         throw new Error(wasmNotInitializedMessage);
     }
 
     console.log('[wasm] compile() called with source:', source);
-
-    // We try to get node count first, but this might also fail if parsing fails.
-    // However, compile_and_render is the one returning structured diagnostics now.
-    // If compile_and_count_nodes fails, it currently returns a string error.
-    // We should probably rely on compile_and_render for the main error path.
 
     let nodeCount = 0;
     try {
@@ -110,12 +93,27 @@ export function compile(source: string): MeshHandle {
         const vertices = wasmMesh.vertices();
         const indices = wasmMesh.indices();
 
-        const result: MeshHandle = { nodeCount, vertexCount, triangleCount, vertices, indices };
-        console.log('[wasm] compile() mesh metrics:', result);
-        return result;
+        const handle: MeshHandle = { nodeCount, vertexCount, triangleCount, vertices, indices };
+        console.log('[wasm] compile() mesh metrics:', handle);
+
+        return {
+            type: 'success',
+            data: handle
+        };
+
     } catch (error: unknown) {
-        // Rethrow the error which is expected to be { diagnostics: DiagnosticData[] }
         console.error('[wasm] compile_and_render failed with:', error);
+
+        // Assert it matches { diagnostics }
+        const payload = error as { diagnostics?: DiagnosticData[] };
+        if (payload && Array.isArray(payload.diagnostics)) {
+            return {
+                type: 'error',
+                diagnostics: payload.diagnostics
+            };
+        }
+
+        // Rethrow if it's not a structured diagnostic error (e.g. panic or other js error)
         throw error;
     }
 }

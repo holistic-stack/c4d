@@ -1,40 +1,62 @@
-import { initWasm, compile, type DiagnosticData } from '../lib/wasm/mesh-wrapper';
+import { initWasm, compile } from '../lib/wasm/mesh-wrapper';
+import type {
+    WorkerRequest,
+    WorkerResponse,
+    CompileSuccessMessage,
+    CompileErrorMessage,
+    ErrorMessage,
+    InitCompleteMessage
+} from './protocol/messages';
 
 console.log('[worker] pipeline.worker loaded');
 
-self.onmessage = async (event: MessageEvent) => {
-    const { type, payload } = event.data;
-    console.log('[worker] received message', { type, payload });
+// Helper to post typed messages
+function post(message: WorkerResponse) {
+    self.postMessage(message);
+}
+
+self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+    const { type } = event.data;
+    console.log('[worker] received message', event.data);
 
     try {
         if (type === 'init') {
             console.log('[worker] initWasm() start');
             await initWasm();
             console.log('[worker] initWasm() complete');
-            self.postMessage({ type: 'init_complete' });
-        } else if (type === 'compile') {
+
+            const msg: InitCompleteMessage = { type: 'init_complete' };
+            post(msg);
+        }
+        else if (type === 'compile') {
+            const { payload } = event.data;
             console.log('[worker] compile() called with source:', payload);
+
             const result = compile(payload);
-            console.log('[worker] compile() result:', result);
-            self.postMessage({ type: 'compile_success', payload: result });
+
+            if (result.type === 'success') {
+                console.log('[worker] compile() success:', result.data);
+                const msg: CompileSuccessMessage = {
+                    type: 'compile_success',
+                    payload: result.data
+                };
+                post(msg);
+            } else {
+                console.log('[worker] compile() error:', result.diagnostics);
+                const msg: CompileErrorMessage = {
+                    type: 'compile_error',
+                    payload: result.diagnostics
+                };
+                post(msg);
+            }
         }
     } catch (error: unknown) {
         console.error('[worker] error during message handling', error);
 
-        // Check if it's a structured diagnostic error
-        // The error thrown by compile() contains diagnostics as POJOs (DiagnosticData)
-        const errorObj = error as { diagnostics?: DiagnosticData[] };
-        if (errorObj && Array.isArray(errorObj.diagnostics)) {
-            self.postMessage({
-                type: 'compile_error',
-                payload: errorObj.diagnostics
-            });
-        } else {
-            // Fallback for other errors
-            self.postMessage({
-                type: 'error',
-                payload: error instanceof Error ? error.message : String(error)
-            });
-        }
+        const msg: ErrorMessage = {
+            type: 'error',
+            payload: error instanceof Error ? error.message : String(error)
+        };
+        post(msg);
     }
 };

@@ -182,6 +182,12 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 - `pnpm check` and `pnpm build` pass.
 - Integration with `libs/wasm` via the local `scripts/build-wasm.sh` workflow is verified.
 
+**Task 2.4 Status (Partial):**
+- Mesh wrapper updated to return structured diagnostics.
+- Worker updated to use structured message protocol.
+- UI diagnostics panel implemented.
+- End-to-end flow verified via unit and integration tests in `apps/playground`.
+
 ---
 
 ### Task 1.3 – Local WASM Build Pipeline
