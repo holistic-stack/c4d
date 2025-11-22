@@ -223,3 +223,5 @@ pub enum ArgumentError {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod arguments_tests;

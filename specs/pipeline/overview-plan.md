@@ -412,6 +412,7 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
 
 - **Playground Tooling Stack**  
   - `apps/playground` uses Svelte 5 with SvelteKit, Vite 7, Vitest 4, TypeScript 5.9, ESLint 9, and plain `three` (no Svelte wrapper library).  
+  - The worker uses a structured message protocol (`CompileSuccess`, `CompileError` with `DiagnosticData[]`) to communicate with the UI.
   - All `pnpm` scripts (dev, test, lint) must complete with zero TypeScript and ESLint errors.
 
 - **Async & Long-Running Operations**  
