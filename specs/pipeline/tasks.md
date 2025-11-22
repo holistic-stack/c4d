@@ -428,6 +428,9 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
          hint: Option<String>,
      }
      ```
+   - This `Diagnostic` is the canonical error type used by `libs/openscad-parser`, `libs/openscad-ast`, `libs/openscad-eval`, and `libs/manifold-rs` when reporting problems (syntax errors, unsupported primitives, evaluation issues, etc.).  
+   - `libs/wasm::diagnostics` provides a WASM-compatible `Diagnostic` wrapper that implements `From<openscad_ast::Diagnostic>` and exposes `severity()`, `message()`, `start()`, `end()`, and `hint()` getters for JavaScript.  
+   - Downstream consumers (the WASM boundary and the Playground) must never invent diagnostics; they always originate from this shared type.
 
 2. **Minimal `cube(10);` Pipeline Wiring**  
    - Implement a tracer-bullet path that exercises **every layer** as described in `overview-plan.md` §3.5:
@@ -442,17 +445,100 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
 
 3. **WASM Interface**  
    - In `libs/wasm`:
-     - Expose a `compile_and_render(source: &str) -> Result<MeshHandle, JsValue>` entry point (exported via `wasm-bindgen`) that internally follows the exact sequence above for `cube(10);` without bypassing any crate boundaries.
-     - Ensure `MeshHandle` carries counts and typed vertex/index buffers suitable for building a `THREE.BufferGeometry` in the Playground, so the worker can return the real manifold mesh to the renderer.
+     - Implement an internal helper that returns either a mesh or a list of Rust diagnostics:
+
+       ```rust
+       pub fn compile_and_render_internal(
+           source: &str,
+       ) -> Result<MeshHandle, Vec<openscad_ast::Diagnostic>> {
+           // Calls manifold-rs::from_source(source) and converts the result
+           // into a MeshHandle on success, or returns a Vec<Diagnostic> on error.
+       }
+       ```
+
+     - Implement a mapping function that converts Rust diagnostics into WASM-visible diagnostics:
+
+       ```rust
+       fn map_rust_diagnostics(
+           diagnostics: Vec<openscad_ast::Diagnostic>,
+       ) -> Vec<wasm::Diagnostic> {
+           diagnostics
+               .into_iter()
+               .map(wasm::Diagnostic::from)
+               .collect()
+       }
+       ```
+
+     - Implement a helper that builds the JavaScript error payload containing a `diagnostics` array:
+
+       ```rust
+       fn build_diagnostics_error_payload(
+           diagnostics: Vec<wasm::Diagnostic>,
+       ) -> JsValue {
+           use js_sys::{Array, Object, Reflect};
+           use wasm_bindgen::JsValue;
+
+           let array = Array::new();
+           for diag in diagnostics {
+               array.push(&JsValue::from(diag));
+           }
+
+           let obj = Object::new();
+           Reflect::set(&obj, &JsValue::from_str("diagnostics"), &array)
+               .expect("set diagnostics property");
+           JsValue::from(obj)
+       }
+       ```
+
+     - Expose the WASM entry point that uses `Result<MeshHandle, JsValue>` and the helpers above, aligning with the project’s Option B decision:
+
+       ```rust
+       #[wasm_bindgen]
+       pub fn compile_and_render(source: &str) -> Result<MeshHandle, JsValue> {
+           match compile_and_render_internal(source) {
+               Ok(mesh) => Ok(mesh),
+               Err(rust_diags) => {
+                   let wasm_diags = map_rust_diagnostics(rust_diags);
+                   let payload = build_diagnostics_error_payload(wasm_diags);
+                   Err(payload)
+               }
+           }
+       }
+       ```
+
+     - Ensure `MeshHandle` carries counts and typed vertex/index buffers suitable for building a `THREE.BufferGeometry` in the Playground, so the worker can return the real manifold mesh to the renderer.  
+     - Do **not** add string-only or fallback error paths; all pipeline failures must flow through a structured `diagnostics` array.
 
 4. **Playground Diagnostics**  
-   - In the worker, forward diagnostics back to the main thread.  
-   - In the Playground, highlight errors using editor squiggles and an error panel.
+   - In the worker (`pipeline.worker.ts`), catch exceptions from the WASM wrapper and normalize them into a `compile_error` message that always carries a `diagnostics` array:
+
+     ```ts
+     try {
+       const mesh = compile(source);
+       (self as DedicatedWorkerGlobalScope).postMessage({
+         type: 'compile_success',
+         payload: mesh,
+       });
+     } catch (error: unknown) {
+       const payload = error as { diagnostics?: Diagnostic[] };
+       const diagnostics = payload.diagnostics ?? [];
+       (self as DedicatedWorkerGlobalScope).postMessage({
+         type: 'compile_error',
+         payload: diagnostics,
+       });
+     }
+     ```
+
+   - In the Playground route (`+page.svelte`), handle `compile_error` messages by:
+     - Updating status to an error state (for example `"Error"`).  
+     - Storing the diagnostics in component state.  
+     - Rendering a diagnostics panel that lists at least severity and message, and later uses `start`/`end` for source mapping.  
+   - Do not crash or silently ignore diagnostics; invalid code must always produce visible, structured error information.
 
 **Acceptance Criteria**
 
-- Intentionally invalid OpenSCAD code produces a list of `Diagnostic` entries with correct spans and messages.  
-- The Playground shows helpful error messages instead of crashes.  
+- Intentionally invalid OpenSCAD code produces a `Vec<Diagnostic>` with correct spans and messages in Rust, and the public `compile_and_render` binding throws a JavaScript error object of the form `{ diagnostics: Diagnostic[] }`.  
+- The worker converts this error into a `compile_error` message whose `payload` is a non-empty diagnostics array, and the Playground renders these diagnostics in a panel instead of crashing.  
 - A `cube(10);` snippet traverses the **full minimal pipeline** documented in `overview-plan.md` §3.5 (Playground → `libs/wasm` → `libs/manifold-rs` → `libs/openscad-eval` → `libs/openscad-ast` → `libs/openscad-parser` → back up to `libs/manifold-rs` → `libs/wasm` → Playground), verified by integration tests or targeted logging.
 
 ---

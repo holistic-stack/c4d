@@ -170,6 +170,10 @@ High-level pipeline:
 - The Playground uses `Diagnostic` data for:
   - Editor squiggles.  
   - Mapping 3D triangle selections back to source.
+- **WASM diagnostics bridge**  
+  - `libs/openscad-ast`, `libs/openscad-eval`, and `libs/manifold-rs` emit Rust-native `Diagnostic` values.  
+  - `libs/wasm::diagnostics` converts these into WASM-visible `Diagnostic` / `DiagnosticList` types that can be consumed from JavaScript.  
+  - The main WASM entry point for geometry, `compile_and_render(source: &str) -> Result<MeshHandle, JsValue>`, returns `Ok(MeshHandle)` on success and throws an error object on failure with the shape `{ diagnostics: Diagnostic[] }`.
 
 ### 3.3 Crate Dependency Graph
 
@@ -372,6 +376,26 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
 - **TypeScript Types**  
   - No `any` types. Always use precise TypeScript types or generics.  
   - Model WASM handles and messages with clear interfaces.
+
+- **WASM Error Propagation Contract**  
+  - The primary geometry entry point `compile_and_render(source: &str) -> Result<MeshHandle, JsValue>` must not stringify diagnostics; all failures are surfaced as a structured JavaScript object.  
+  - In browser code, an error thrown by `compile_and_render` is expected to have a `diagnostics` property containing an array of wasm `Diagnostic` objects, each exposing `severity()`, `message()`, `start()`, `end()`, and `hint()`.  
+  - Typical usage pattern in TypeScript:
+
+    ```ts
+    try {
+      const mesh = await compile_and_render(source);
+      // Success: use mesh.vertex_count(), mesh.vertices(), mesh.indices(), etc.
+    } catch (error: unknown) {
+      const payload = error as { diagnostics?: Diagnostic[] };
+      const diagnostics = payload.diagnostics ?? [];
+      for (const d of diagnostics) {
+        console.error(d.severity(), d.message(), d.start(), d.end(), d.hint());
+      }
+    }
+    ```
+
+  - Any pipeline error produced by Rust that lacks a `diagnostics` array is treated as a bug and must be fixed, not as an acceptable fallback.
 
 - **WASM Memory Lifecycle**  
   - Pattern: **Alloc → View → Upload → Free**.
