@@ -63,3 +63,58 @@ pub fn parse_vector(node: &Node, source: &str) -> Result<CubeSize, Vec<Diagnosti
         )])
     }
 }
+
+/// Retrieves a named argument from the arguments list.
+pub fn get_named_arg<'a>(args: &'a Node, name: &str, source: &str) -> Option<Node<'a>> {
+    let mut cursor = args.walk();
+    for child in args.children(&mut cursor) {
+        if child.kind() == "assignment" {
+            let lhs = child.child_by_field_name("left")?;
+            if &source[lhs.byte_range()] == name {
+                return child.child_by_field_name("right");
+            }
+        }
+    }
+    None
+}
+
+/// Retrieves a positional argument from the arguments list.
+pub fn get_positional_arg<'a>(args: &'a Node, index: usize) -> Option<Node<'a>> {
+    let mut cursor = args.walk();
+    let mut count = 0;
+    for child in args.children(&mut cursor) {
+        if child.kind() != "assignment" && (child.kind() == "number" || child.kind() == "list" || child.kind() == "identifier" || child.kind() == "string") {
+            if count == index {
+                return Some(child);
+            }
+            count += 1;
+        }
+    }
+    None
+}
+
+/// Parses a list of numbers (vector) from a list node.
+pub fn parse_number_list(node: &Node, source: &str) -> Result<Vec<f64>, Vec<Diagnostic>> {
+    let mut cursor = node.walk();
+    let mut values = Vec::new();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "number" || child.kind() == "integer" || child.kind() == "float" {
+            let val = parse_f64(&child, source)?;
+            values.push(val);
+        }
+    }
+    Ok(values)
+}
+
+/// Parses a list of lists of numbers.
+pub fn parse_number_list_of_lists(node: &Node, source: &str) -> Result<Vec<Vec<f64>>, Vec<Diagnostic>> {
+    let mut cursor = node.walk();
+    let mut lists = Vec::new();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "list" || child.kind() == "vector" {
+            let list = parse_number_list(&child, source)?;
+            lists.push(list);
+        }
+    }
+    Ok(lists)
+}

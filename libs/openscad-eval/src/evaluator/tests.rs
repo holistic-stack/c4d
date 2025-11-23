@@ -259,3 +259,18 @@ fn evaluate_multiple_assignments() {
     let nodes = evaluator.evaluate_source("$fn = 50; $fa = 1;").expect("assignments parsed");
     assert!(nodes.is_empty());
 }
+
+#[test]
+fn evaluate_polyhedron_simple() {
+    let evaluator = Evaluator::new(InMemoryFilesystem::default());
+    let source = "polyhedron(points=[[0,0,0], [1,0,0], [0,1,0], [0,0,1]], faces=[[0,1,2], [0,3,1], [0,2,3], [1,3,2]]);";
+    let nodes = evaluator.evaluate_source(source).expect("polyhedron parsed");
+    assert_eq!(nodes.len(), 1);
+    match &nodes[0] {
+        GeometryNode::Polyhedron { points, faces, .. } => {
+            assert_eq!(points.len(), 4);
+            assert_eq!(faces.len(), 4);
+        }
+        _ => panic!("expected polyhedron"),
+    }
+}

@@ -1,6 +1,10 @@
+//! Geometric primitives (cube, sphere, cylinder, etc.).
+
+pub mod circle;
 pub mod cube;
+pub mod polygon;
 pub mod sphere;
 pub mod square;
-pub mod circle;
-pub mod polygon;
 pub mod triangulate;
+pub mod cylinder;
+pub mod polyhedron;

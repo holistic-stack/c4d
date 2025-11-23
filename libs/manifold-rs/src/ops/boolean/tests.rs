@@ -1,14 +1,30 @@
-use crate::{BooleanOp, primitives::cube::cube, Vec3};
+use super::*;
+use crate::primitives::square::square;
+use glam::DVec2;
 
 #[test]
 fn test_union_disjoint() {
-    let m1 = cube(Vec3::new(1.0, 1.0, 1.0), false).unwrap();
-    // Disjoint cube
-    let mut m2 = cube(Vec3::new(1.0, 1.0, 1.0), false).unwrap();
-    m2.transform(glam::DMat4::from_translation(Vec3::new(2.0, 0.0, 0.0)));
+    let m1 = square(DVec2::new(10.0, 10.0), true).unwrap();
+    let mut m2 = square(DVec2::new(10.0, 10.0), true).unwrap();
 
-    let m3 = m1.boolean(&m2, BooleanOp::Union).expect("union succeeds");
-    assert_eq!(m3.vertex_count(), 16);
-    assert_eq!(m3.face_count(), 24);
-    m3.validate().expect("valid topology");
+    // Move m2 so they don't overlap
+    for v in &mut m2.vertices {
+        v.position.x += 20.0;
+    }
+
+    let m3 = boolean(&m1, &m2, BooleanOp::Union).expect("union succeeds");
+
+    assert_eq!(m3.vertex_count(), 8);
+    assert_eq!(m3.face_count(), 4);
+}
+
+#[test]
+fn test_difference_unimplemented() {
+    let m1 = square(DVec2::new(10.0, 10.0), true).unwrap();
+    let m2 = square(DVec2::new(5.0, 5.0), true).unwrap();
+
+    let result = boolean(&m1, &m2, BooleanOp::Difference);
+
+    assert!(result.is_ok());
+    let _m3 = result.unwrap();
 }

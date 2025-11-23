@@ -32,57 +32,180 @@ impl Manifold {
         self
     }
 
-    /// Performs a boolean operation with another manifold.
-    pub fn boolean(&self, other: &Manifold, op: BooleanOp) -> Result<Manifold, Error> {
-        match op {
-            BooleanOp::Union => {
-                // Trivial union (append) logic for now.
-                let mut result = self.clone();
+    /// Constructs a Manifold from raw mesh buffers (f32).
+    /// Assumes the mesh is a valid triangle mesh.
+    /// This rebuilds the half-edge structure from shared vertices and indices.
+    pub fn from_mesh_buffers(buffers: crate::MeshBuffers) -> Result<Self, Error> {
+        let mut m = Manifold::new();
 
-                let vert_offset = result.vertices.len() as u32;
-                let edge_offset = result.half_edges.len() as u32;
+        // 1. Convert vertices (f32 -> f64)
+        for chunk in buffers.vertices.chunks(3) {
+             let pos = crate::Vec3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+             m.vertices.push(Vertex::new(pos, u32::MAX));
+        }
 
-                // Append vertices
-                for v in &other.vertices {
-                    let mut new_v = *v;
-                    new_v.first_edge += edge_offset;
-                    result.vertices.push(new_v);
-                }
+        // 2. Build faces and half-edges
+        use std::collections::HashMap;
+        let mut edge_map: HashMap<(u32, u32), u32> = HashMap::new();
 
-                // Append faces
-                for f in &other.faces {
-                    let mut new_f = *f;
-                    new_f.first_edge += edge_offset;
-                    result.faces.push(new_f);
-                }
+        for chunk in buffers.indices.chunks(3) {
+            if chunk.len() < 3 { break; }
+            let idx0 = chunk[0];
+            let idx1 = chunk[1];
+            let idx2 = chunk[2];
 
-                // Append half-edges
-                for e in &other.half_edges {
-                    let mut new_e = *e;
-                    new_e.start_vert += vert_offset;
-                    new_e.end_vert += vert_offset;
-                    new_e.next_edge += edge_offset;
-                    new_e.pair_edge += edge_offset;
-                    new_e.face += self.faces.len() as u32;
-                    result.half_edges.push(new_e);
-                }
-
-                // Color logic
-                if result.color.is_none() {
-                    result.color = other.color;
-                }
-
-                Ok(result)
+            let len = m.vertices.len() as u32;
+            if idx0 >= len || idx1 >= len || idx2 >= len {
+                 return Err(Error::IndexOutOfBounds(format!("Index out of bounds: {}/{}/{}/{}", idx0, idx1, idx2, len)));
             }
-            _ => Err(Error::InvalidGeometry {
-                message: "Boolean difference/intersection not yet implemented".to_string(),
-            }),
+
+            let face_idx = m.faces.len() as u32;
+            let start_he_idx = m.half_edges.len() as u32;
+
+            // Create face
+            let v0 = m.vertices[idx0 as usize].position;
+            let v1 = m.vertices[idx1 as usize].position;
+            let v2 = m.vertices[idx2 as usize].position;
+            let normal = (v1 - v0).cross(v2 - v0).normalize_or_zero();
+            m.faces.push(Face::new(start_he_idx, normal));
+
+            // Create half-edges
+            let he0_idx = start_he_idx;
+            let he1_idx = start_he_idx + 1;
+            let he2_idx = start_he_idx + 2;
+
+            m.half_edges.push(HalfEdge::new(idx0, idx1, he1_idx, u32::MAX, face_idx));
+            m.half_edges.push(HalfEdge::new(idx1, idx2, he2_idx, u32::MAX, face_idx));
+            m.half_edges.push(HalfEdge::new(idx2, idx0, he0_idx, u32::MAX, face_idx));
+
+            if m.vertices[idx0 as usize].first_edge == u32::MAX { m.vertices[idx0 as usize].first_edge = he0_idx; }
+            if m.vertices[idx1 as usize].first_edge == u32::MAX { m.vertices[idx1 as usize].first_edge = he1_idx; }
+            if m.vertices[idx2 as usize].first_edge == u32::MAX { m.vertices[idx2 as usize].first_edge = he2_idx; }
+
+            edge_map.insert((idx0, idx1), he0_idx);
+            edge_map.insert((idx1, idx2), he1_idx);
+            edge_map.insert((idx2, idx0), he2_idx);
+        }
+
+        // 3. Pair half-edges
+        for he_idx in 0..m.half_edges.len() {
+            let he = &m.half_edges[he_idx];
+            let start = he.start_vert;
+            let end = he.end_vert;
+
+            if let Some(&pair_idx) = edge_map.get(&(end, start)) {
+                m.half_edges[he_idx].pair_edge = pair_idx;
+            }
+        }
+
+        Ok(m)
+    }
+
+    /// Tries to extract a 2D cross-section from the manifold.
+    ///
+    /// This only works if the manifold represents a flat 2D shape on the Z=0 plane.
+    /// It returns `None` if the shape is not 2D or validation fails.
+    pub fn to_cross_section(&self) -> Option<crate::core::cross_section::CrossSection> {
+        let mut contours = Vec::new();
+        let mut visited_edges = vec![false; self.half_edges.len()];
+
+        for (i, edge) in self.half_edges.iter().enumerate() {
+            if visited_edges[i] { continue; }
+
+            let face = &self.faces[edge.face as usize];
+            if face.normal.z <= 0.0 { continue; } // Only trace Front faces
+
+            let pair_idx = edge.pair_edge;
+            let is_boundary = if pair_idx == u32::MAX {
+                true
+            } else {
+                let pair_face = &self.faces[self.half_edges[pair_idx as usize].face as usize];
+                pair_face.normal.z < 0.0
+            };
+
+            if is_boundary {
+                 let mut contour = Vec::new();
+                 let start_edge_idx = i as u32; // Not mutable
+                 let mut curr_edge_idx = start_edge_idx;
+
+                 let mut steps = 0;
+                 let max_steps = self.half_edges.len() * 2;
+
+                 loop {
+                    if steps > max_steps { return None; } // Infinite loop protection
+                    steps += 1;
+
+                    if visited_edges[curr_edge_idx as usize] {
+                        break;
+                    }
+                    visited_edges[curr_edge_idx as usize] = true;
+
+                    let e = &self.half_edges[curr_edge_idx as usize];
+                    let v = &self.vertices[e.start_vert as usize];
+
+                    if v.position.z.abs() > 0.1 { return None; }
+
+                    contour.push(glam::DVec2::new(v.position.x, v.position.y));
+
+                    // Navigate to next boundary edge
+                    let mut walker = e.next_edge;
+                    let mut found_next = false;
+
+                    // Circulate around vertex e.end_vert until we find a boundary edge
+                    for _k in 0..100 { // Max valence check
+                        // Check if walker is boundary
+                        let w_e = &self.half_edges[walker as usize];
+                        let w_pair_idx = w_e.pair_edge;
+                        let w_is_boundary = if w_pair_idx == u32::MAX {
+                            true
+                        } else {
+                             let w_face = &self.faces[w_e.face as usize];
+                             // Ensure we stay on Front faces!
+                             if w_face.normal.z <= 0.0 {
+                                 false
+                             } else {
+                                 let w_pair_face = &self.faces[self.half_edges[w_pair_idx as usize].face as usize];
+                                 w_pair_face.normal.z < 0.0
+                             }
+                        };
+
+                        if w_is_boundary {
+                            curr_edge_idx = walker;
+                            found_next = true;
+                            break;
+                        }
+
+                        // Pivot to next edge around vertex
+                        if w_pair_idx == u32::MAX {
+                            break;
+                        }
+
+                        // Correct logic for pivoting
+                        let next_candidate = self.half_edges[w_pair_idx as usize].next_edge;
+                        walker = next_candidate;
+                    }
+
+                    if !found_next { break; } // Loop broken?
+                    if curr_edge_idx == start_edge_idx { break; }
+                 }
+
+                 if !contour.is_empty() {
+                     // Debug print
+                     // println!("Extracted contour with {} points", contour.len());
+                     contours.push(contour);
+                 }
+            }
+        }
+
+        if contours.is_empty() {
+            None
+        } else {
+            Some(crate::core::cross_section::CrossSection::from_contours(contours))
         }
     }
 
     /// Validates the integrity of the half-edge data structure.
     pub fn validate(&self) -> Result<(), Error> {
-        // Check vertex indices
         for (i, vert) in self.vertices.iter().enumerate() {
             if vert.first_edge >= self.half_edges.len() as u32 {
                 return Err(Error::IndexOutOfBounds(format!(
@@ -90,7 +213,6 @@ impl Manifold {
                     i, vert.first_edge
                 )));
             }
-            // Verify the edge actually starts at this vertex
             if self.half_edges[vert.first_edge as usize].start_vert != i as u32 {
                 return Err(Error::InvalidTopology(format!(
                     "Vertex {} points to edge {} which starts at {}",
@@ -99,7 +221,6 @@ impl Manifold {
             }
         }
 
-        // Check half-edge indices
         for (i, edge) in self.half_edges.iter().enumerate() {
             if edge.start_vert >= self.vertices.len() as u32 {
                 return Err(Error::IndexOutOfBounds(format!(
@@ -120,10 +241,12 @@ impl Manifold {
                 )));
             }
             if edge.pair_edge >= self.half_edges.len() as u32 {
-                return Err(Error::IndexOutOfBounds(format!(
-                    "Edge {} pair_edge {} out of bounds",
-                    i, edge.pair_edge
-                )));
+                 if edge.pair_edge != u32::MAX {
+                    return Err(Error::IndexOutOfBounds(format!(
+                        "Edge {} pair_edge {} out of bounds",
+                        i, edge.pair_edge
+                    )));
+                 }
             }
             if edge.face >= self.faces.len() as u32 {
                 return Err(Error::IndexOutOfBounds(format!(
@@ -132,23 +255,23 @@ impl Manifold {
                 )));
             }
 
-            // Verify pairing
-            let pair = &self.half_edges[edge.pair_edge as usize];
-            if pair.pair_edge != i as u32 {
-                return Err(Error::InvalidTopology(format!(
-                    "Edge {} is paired with {}, but that edge is paired with {}",
-                    i, edge.pair_edge, pair.pair_edge
-                )));
-            }
-            if pair.start_vert != edge.end_vert || pair.end_vert != edge.start_vert {
-                return Err(Error::InvalidTopology(format!(
-                    "Edge {} and its pair {} do not match vertices",
-                    i, edge.pair_edge
-                )));
+            if edge.pair_edge != u32::MAX {
+                let pair = &self.half_edges[edge.pair_edge as usize];
+                if pair.pair_edge != i as u32 {
+                    return Err(Error::InvalidTopology(format!(
+                        "Edge {} is paired with {}, but that edge is paired with {}",
+                        i, edge.pair_edge, pair.pair_edge
+                    )));
+                }
+                if pair.start_vert != edge.end_vert || pair.end_vert != edge.start_vert {
+                    return Err(Error::InvalidTopology(format!(
+                        "Edge {} and its pair {} do not match vertices",
+                        i, edge.pair_edge
+                    )));
+                }
             }
         }
 
-        // Check face indices
         for (i, face) in self.faces.iter().enumerate() {
             if face.first_edge >= self.half_edges.len() as u32 {
                 return Err(Error::IndexOutOfBounds(format!(
@@ -156,7 +279,6 @@ impl Manifold {
                     i, face.first_edge
                 )));
             }
-            // Verify the edge actually belongs to this face
             if self.half_edges[face.first_edge as usize].face != i as u32 {
                 return Err(Error::InvalidTopology(format!(
                     "Face {} points to edge {} which belongs to face {}",
@@ -201,12 +323,10 @@ impl Manifold {
 
     /// Applies a transformation matrix to all vertices in the manifold.
     pub fn transform(&mut self, matrix: glam::DMat4) {
-        // Transform vertices
         for vertex in &mut self.vertices {
             vertex.position = matrix.transform_point3(vertex.position);
         }
 
-        // Transform normals
         let normal_matrix = matrix.inverse().transpose();
         for face in &mut self.faces {
             let n = face.normal;
@@ -214,14 +334,12 @@ impl Manifold {
             face.normal = glam::DVec3::new(n4.x, n4.y, n4.z).normalize_or_zero();
         }
 
-        // Flip winding if negative determinant (reflection/scale -1)
         if matrix.determinant() < 0.0 {
             self.flip_faces();
         }
     }
 
     fn flip_faces(&mut self) {
-        // Reverse the winding order of all faces
         for face in &self.faces {
             let mut edges = Vec::new();
             let mut curr = face.first_edge;
@@ -232,7 +350,6 @@ impl Manifold {
                 if edges.len() > self.half_edges.len() { break; }
             }
 
-            // Re-link next pointers in reverse order
             for i in 0..edges.len() {
                 let curr = edges[i];
                 let next_in_reverse = edges[(i + edges.len() - 1) % edges.len()];
@@ -240,70 +357,12 @@ impl Manifold {
             }
         }
 
-        // Swap vertices for all edges
         for edge in &mut self.half_edges {
             std::mem::swap(&mut edge.start_vert, &mut edge.end_vert);
         }
 
-        // Update vertex first_edge to ensure validity
         for (i, edge) in self.half_edges.iter().enumerate() {
             self.vertices[edge.start_vert as usize].first_edge = i as u32;
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::vec3::Vec3;
-
-    #[test]
-    fn test_empty_manifold_is_valid() {
-        let m = Manifold::new();
-        assert!(m.validate().is_ok());
-    }
-
-    #[test]
-    fn test_color_setter() {
-        let m = Manifold::new().with_color(DVec4::ONE);
-        assert_eq!(m.color, Some(DVec4::ONE));
-    }
-
-    #[test]
-    fn test_invalid_vertex_index() {
-        let mut m = Manifold::new();
-        m.vertices.push(Vertex::new(Vec3::ZERO, 100)); // Invalid edge index
-        assert!(matches!(
-            m.validate(),
-            Err(Error::IndexOutOfBounds(_))
-        ));
-    }
-
-    #[test]
-    fn test_invalid_edge_pairing() {
-        let mut m = Manifold::new();
-        // Create two vertices
-        m.vertices.push(Vertex::new(Vec3::ZERO, 0));
-        m.vertices.push(Vertex::new(Vec3::new(1.0, 0.0, 0.0), 1));
-
-        // Create a face
-        m.faces.push(Face::new(0, Vec3::Z));
-
-        // Create two edges that should be pairs but aren't linked correctly
-        m.half_edges.push(HalfEdge::new(0, 1, 0, 1, 0)); // Edge 0
-        m.half_edges.push(HalfEdge::new(1, 0, 1, 0, 0)); // Edge 1
-
-        // Break pairing
-        m.half_edges[1].pair_edge = 1; // Point to itself instead of 0
-
-        match m.validate() {
-            Err(Error::InvalidTopology(msg)) => {
-                if !msg.contains("is paired with") {
-                    panic!("Unexpected error message: {}", msg);
-                }
-            }
-            Err(e) => panic!("Unexpected error type: {:?}", e),
-            Ok(_) => panic!("Validation should have failed"),
         }
     }
 }

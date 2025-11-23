@@ -75,6 +75,20 @@ pub enum Statement {
         /// Source span for diagnostics.
         span: Span,
     },
+    /// A polyhedron primitive.
+    ///
+    /// Examples:
+    /// - `polyhedron(points=[...], faces=[...], convexity=1);`
+    Polyhedron {
+        /// Vertices of the polyhedron.
+        points: Vec<[f64; 3]>,
+        /// Faces of the polyhedron (indices into points).
+        faces: Vec<Vec<usize>>,
+        /// Convexity parameter.
+        convexity: u32,
+        /// Source span.
+        span: Span,
+    },
     /// A square 2D primitive.
     ///
     /// Examples:

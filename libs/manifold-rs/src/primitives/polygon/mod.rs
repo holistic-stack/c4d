@@ -1,60 +1,48 @@
-//! Polygon primitive implementation.
-
-use crate::{
-    error::Error,
-    primitives::triangulate::manifold_from_contours,
-    Manifold,
-};
+use crate::Manifold;
+use crate::error::Error;
 use glam::DVec2;
+use crate::primitives::triangulate::manifold_from_contours;
+use crate::Vec3;
 
-/// Creates a polygon manifold from 2D points and paths.
+/// Creates a polygon from a list of points and optional paths.
 ///
-/// # Arguments
-///
-/// * `points` - List of 2D vertices.
-/// * `paths` - List of paths (indices into points). First path is outline, others are holes.
-/// * `convexity` - Convexity parameter (currently unused but stored).
-///
-/// # Returns
-///
-/// * `Ok(Manifold)` - A valid polygon manifold (as a flat 3D mesh, double-sided).
-/// * `Err(Error)` - If the polygon construction fails.
+/// If paths are not provided, assumes points form a single loop in order.
 pub fn polygon(
     points: Vec<DVec2>,
-    paths: Vec<Vec<usize>>,
+    paths: Option<Vec<Vec<u32>>>,
     _convexity: u32,
 ) -> Result<Manifold, Error> {
     if points.len() < 3 {
-         return Err(Error::InvalidGeometry {
-             message: format!("Polygon must have at least 3 points: {}", points.len())
-         });
-    }
-    if paths.is_empty() {
-        return Err(Error::InvalidGeometry {
-             message: "Polygon must have at least one path".to_string()
-         });
+        return Ok(Manifold::new());
     }
 
-    let mut contours = Vec::with_capacity(paths.len());
-    for path in paths {
-        if path.len() < 3 {
-            // Or ignore? OpenSCAD might just ignore invalid paths or warn.
-            continue;
-        }
-        let mut contour = Vec::with_capacity(path.len());
-        for &idx in &path {
-            if idx >= points.len() {
-                return Err(Error::IndexOutOfBounds(
-                    format!("Polygon path index {} out of bounds ({} points)", idx, points.len())
-                ));
+    let mut contours = Vec::new();
+
+    if let Some(path_list) = paths {
+        for path in path_list {
+            let mut contour = Vec::new();
+            for idx_u32 in path {
+                let idx = idx_u32 as usize;
+                if idx >= points.len() {
+                    return Err(Error::IndexOutOfBounds(format!("Polygon path index {}", idx)));
+                }
+                let p = points[idx];
+                contour.push(Vec3::new(p.x, p.y, 0.0));
             }
-            contour.push(points[idx]);
+            contours.push(contour);
+        }
+    } else {
+        // Single loop from all points
+        let mut contour = Vec::new();
+        for p in points {
+            contour.push(Vec3::new(p.x, p.y, 0.0));
         }
         contours.push(contour);
     }
 
-    manifold_from_contours(contours)
+    manifold_from_contours(contours).map_err(|e| Error::MeshGeneration(e))
 }
 
-#[cfg(test)]
-mod tests;
+pub fn polygon_from_loops(loops: Vec<Vec<Vec3>>) -> Result<Manifold, String> {
+    manifold_from_contours(loops)
+}

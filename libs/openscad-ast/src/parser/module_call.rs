@@ -12,6 +12,7 @@
 //! - **square**: 2D Rectangles with scalar or vector sizing
 //! - **circle**: 2D Circles with radius/diameter and fragment control
 //! - **polygon**: 2D Polygons with points and paths
+//! - **polyhedron**: 3D Polyhedrons defined by points and faces
 //!
 //! # Design Pattern
 //!
@@ -49,6 +50,7 @@ use super::arguments::cylinder::parse_cylinder_arguments;
 use super::arguments::square::parse_square_arguments;
 use super::arguments::circle::parse_circle_arguments;
 use super::arguments::polygon::parse_polygon_arguments;
+use super::arguments::polyhedron::parse_polyhedron_arguments;
 
 /// Parses a module call node from the CST into a primitive statement.
 ///
@@ -75,6 +77,7 @@ use super::arguments::polygon::parse_polygon_arguments;
 /// - `square(size, center)` → [`Statement::Square`]
 /// - `circle(r|d, $fn, $fa, $fs)` → [`Statement::Circle`]
 /// - `polygon(points, paths, convexity)` → [`Statement::Polygon`]
+/// - `polyhedron(points, faces, convexity)` → [`Statement::Polyhedron`]
 ///
 /// # Examples
 ///
@@ -202,6 +205,22 @@ pub fn parse_module_call(
                     Span::new(node.start_byte(), node.end_byte()).unwrap(),
                 )
                 .with_hint("Try: polygon(points=[[0,0], [10,0], [0,10]]);")])
+            }
+        }
+        "polyhedron" => {
+            let args_node = children.iter().find(|n| n.kind() == "arguments");
+            if let Some(args) = args_node {
+                let (points, faces, convexity) = parse_polyhedron_arguments(args, source)?;
+                let span = Span::new(node.start_byte(), node.end_byte())
+                    .map_err(|e| vec![Diagnostic::error(format!("Invalid span: {}", e), Span::new(0, 1).unwrap())])?;
+
+                Ok(Some(Statement::Polyhedron { points, faces, convexity, span }))
+            } else {
+                 Err(vec![Diagnostic::error(
+                    "polyhedron() requires arguments",
+                    Span::new(node.start_byte(), node.end_byte()).unwrap(),
+                )
+                .with_hint("Try: polyhedron(points=[...], faces=[...]);")])
             }
         }
         // Unknown module - return None to allow extensibility

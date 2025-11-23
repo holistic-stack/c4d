@@ -18,6 +18,10 @@ pub enum Error {
     /// Error when constructing geometry (e.g. invalid parameters).
     #[error("Invalid geometry: {message}")]
     InvalidGeometry { message: String },
+
+    /// Error during mesh generation/triangulation.
+    #[error("Mesh generation failed: {0}")]
+    MeshGeneration(String),
 }
 
 /// A specialized Result type for Manifold operations.

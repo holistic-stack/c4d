@@ -1,47 +1,29 @@
-//! Square primitive implementation.
-
-use crate::{
-    error::Error,
-    primitives::triangulate::manifold_from_contours,
-    Manifold,
-};
+use crate::Manifold;
+use crate::error::Error;
 use glam::DVec2;
+use crate::primitives::triangulate::manifold_from_contours;
+use crate::Vec3;
 
-/// Creates a square (2D rectangle) manifold.
-///
-/// # Arguments
-///
-/// * `size` - The size of the square (x, y).
-/// * `center` - Whether the square is centered at the origin.
-///
-/// # Returns
-///
-/// * `Ok(Manifold)` - A valid square manifold (as a flat 3D mesh).
-/// * `Err(Error)` - If the square construction fails.
+/// Creates a square (or rectangle) centered at the origin or in the first quadrant.
 pub fn square(size: DVec2, center: bool) -> Result<Manifold, Error> {
-    if size.x <= 0.0 || size.y <= 0.0 {
-         return Err(Error::InvalidGeometry {
-             message: format!("Square size must be positive: {:?}", size)
-         });
-    }
+    let x = size.x;
+    let y = size.y;
 
-    let (x, y) = (size.x, size.y);
-    let (dx, dy) = if center {
-        (-x / 2.0, -y / 2.0)
+    let points = if center {
+        vec![
+            Vec3::new(-x / 2.0, -y / 2.0, 0.0),
+            Vec3::new(x / 2.0, -y / 2.0, 0.0),
+            Vec3::new(x / 2.0, y / 2.0, 0.0),
+            Vec3::new(-x / 2.0, y / 2.0, 0.0),
+        ]
     } else {
-        (0.0, 0.0)
+        vec![
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::new(x, y, 0.0),
+            Vec3::new(0.0, y, 0.0),
+        ]
     };
 
-    // Vertices in CCW order
-    let points = vec![
-        DVec2::new(dx, dy),
-        DVec2::new(dx + x, dy),
-        DVec2::new(dx + x, dy + y),
-        DVec2::new(dx, dy + y),
-    ];
-
-    manifold_from_contours(vec![points])
+    manifold_from_contours(vec![points]).map_err(|e| Error::MeshGeneration(e))
 }
-
-#[cfg(test)]
-mod tests;

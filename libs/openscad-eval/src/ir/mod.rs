@@ -46,6 +46,13 @@ pub enum GeometryNode {
         convexity: u32,
         span: Span,
     },
+    /// Polyhedron primitive defined by points and faces.
+    Polyhedron {
+        points: Vec<DVec3>,
+        faces: Vec<Vec<usize>>,
+        convexity: u32,
+        span: Span,
+    },
     /// Linear extrusion of a 2D child geometry.
     LinearExtrude {
         height: f64,
@@ -188,6 +195,24 @@ impl GeometryNode {
         })
     }
 
+    /// Constructs a polyhedron node.
+    pub fn polyhedron(
+        points: Vec<DVec3>,
+        faces: Vec<Vec<usize>>,
+        convexity: u32,
+        span: Span,
+    ) -> Result<Self, GeometryValidationError> {
+        if points.len() < 4 {
+            return Err(GeometryValidationError::PolyhedronTooFewPoints { count: points.len() });
+        }
+        Ok(Self::Polyhedron {
+            points,
+            faces,
+            convexity,
+            span,
+        })
+    }
+
     /// Returns the primary size vector for the node.
     pub fn size(&self) -> DVec3 {
         match self {
@@ -200,6 +225,7 @@ impl GeometryNode {
             GeometryNode::Square { size, .. } => DVec3::new(size.x, size.y, 0.0),
             GeometryNode::Circle { radius, .. } => DVec3::new(radius * 2.0, radius * 2.0, 0.0),
             GeometryNode::Polygon { .. } => DVec3::ZERO,
+            GeometryNode::Polyhedron { .. } => DVec3::ZERO, // Bounding box needed
             GeometryNode::LinearExtrude { height, .. } => DVec3::new(0.0, 0.0, *height),
             GeometryNode::RotateExtrude { .. } => DVec3::ZERO,
             GeometryNode::Transform { child, .. } => child.size(),
@@ -238,6 +264,9 @@ pub enum GeometryValidationError {
     /// Polygon must have at least 3 points.
     #[error("polygon must have at least 3 points, got {count}")]
     PolygonTooFewPoints { count: usize },
+    /// Polyhedron must have at least 4 points.
+    #[error("polyhedron must have at least 4 points, got {count}")]
+    PolyhedronTooFewPoints { count: usize },
 }
 
 #[cfg(test)]

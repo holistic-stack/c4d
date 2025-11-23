@@ -143,6 +143,11 @@ impl<F: FileSystem + Clone> Evaluator<F> {
                      let node = GeometryNode::polygon(points_vec, paths_vec, *convexity, *span)?;
                      nodes.push(node);
                 }
+                Statement::Polyhedron { points, faces, convexity, span } => {
+                    let points_vec: Vec<DVec3> = points.iter().map(|p| DVec3::new(p[0], p[1], p[2])).collect();
+                    let node = GeometryNode::polyhedron(points_vec, faces.clone(), *convexity, *span)?;
+                    nodes.push(node);
+                }
                 Statement::Translate { vector, child, span } => {
                     let translation = DVec3::from_array(*vector);
                     let matrix = DMat4::from_translation(translation);

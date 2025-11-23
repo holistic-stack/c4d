@@ -8,11 +8,14 @@ use crate::primitives::sphere::Sphere;
 use crate::primitives::square::square;
 use crate::primitives::circle::circle;
 use crate::primitives::polygon::polygon;
+use crate::primitives::cylinder::cylinder;
+use crate::primitives::polyhedron::polyhedron;
 use crate::ops::resize::resize;
 use crate::ops::extrude::linear_extrude;
 use crate::ops::revolve::rotate_extrude;
 use crate::ops::hull::hull;
 use crate::ops::minkowski::minkowski;
+use crate::ops::boolean::boolean;
 use crate::transform::apply_transform;
 use openscad_eval::{Evaluator, InMemoryFilesystem, GeometryNode, EvaluationError};
 use openscad_ast::{Diagnostic, Span};
@@ -68,8 +71,10 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
                 vec![Diagnostic::error(format!("Manifold error: {}", err), *span)]
             })
         }
-        GeometryNode::Cylinder { span, .. } => {
-            Err(vec![Diagnostic::error("Cylinder not yet implemented in manifold-rs".to_string(), *span)])
+        GeometryNode::Cylinder { height, radius_bottom, radius_top, center, segments, span } => {
+            cylinder(*height, *radius_bottom, *radius_top, *center, *segments).map_err(|e| {
+                vec![Diagnostic::error(format!("Manifold error: {}", e), *span)]
+            })
         }
         GeometryNode::Square { size, center, span } => {
             square(*size, *center).map_err(|e| {
@@ -82,14 +87,30 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
             })
         }
         GeometryNode::Polygon { points, paths, convexity, span } => {
-             polygon(points.clone(), paths.clone(), *convexity).map_err(|e| {
+             // Convert paths from Vec<Vec<usize>> to Option<Vec<Vec<u32>>>
+             let paths_converted = if paths.is_empty() {
+                 None
+             } else {
+                 Some(paths.iter().map(|path| {
+                     path.iter().map(|&idx| idx as u32).collect()
+                 }).collect())
+             };
+
+             polygon(points.clone(), paths_converted, *convexity).map_err(|e| {
+                 vec![Diagnostic::error(format!("Manifold error: {}", e), *span)]
+             })
+        }
+        GeometryNode::Polyhedron { points, faces, convexity: _, span } => {
+             let pts: Vec<Vec3> = points.iter().map(|p| Vec3::new(p.x, p.y, p.z)).collect();
+             polyhedron(&pts, faces).map_err(|e| {
                  vec![Diagnostic::error(format!("Manifold error: {}", e), *span)]
              })
         }
         GeometryNode::LinearExtrude { height, twist, slices, center, scale, convexity: _, child, span } => {
              let child_mesh = convert_node(child)?;
-             let cs = manifold_to_cross_section(&child_mesh).map_err(|e| {
-                 vec![Diagnostic::error(format!("Failed to extract cross section: {}", e), *span)]
+             // Extract cross section using Manifold method
+             let cs = child_mesh.to_cross_section().ok_or_else(|| {
+                 vec![Diagnostic::error("Failed to extract cross section (not 2D)".to_string(), *span)]
              })?;
 
              linear_extrude(&cs, *height, *twist, *slices, *center, *scale).map_err(|e| {
@@ -98,8 +119,8 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
         }
         GeometryNode::RotateExtrude { angle, convexity, segments, child, span } => {
              let child_mesh = convert_node(child)?;
-             let cs = manifold_to_cross_section(&child_mesh).map_err(|e| {
-                 vec![Diagnostic::error(format!("Failed to extract cross section: {}", e), *span)]
+             let cs = child_mesh.to_cross_section().ok_or_else(|| {
+                 vec![Diagnostic::error("Failed to extract cross section (not 2D)".to_string(), *span)]
              })?;
 
              rotate_extrude(&cs, *angle, *convexity, *segments).map_err(|e| {
@@ -126,7 +147,7 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
             let mut result = convert_node(&children[0])?;
             for child in &children[1..] {
                 let other = convert_node(child)?;
-                result = result.boolean(&other, BooleanOp::Union).map_err(|e| {
+                result = boolean(&result, &other, BooleanOp::Union).map_err(|e| {
                     vec![Diagnostic::error(format!("Union error: {}", e), *span)]
                 })?;
             }
@@ -137,7 +158,7 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
             let mut result = convert_node(&children[0])?;
             for child in &children[1..] {
                 let other = convert_node(child)?;
-                result = result.boolean(&other, BooleanOp::Difference).map_err(|e| {
+                result = boolean(&result, &other, BooleanOp::Difference).map_err(|e| {
                     vec![Diagnostic::error(format!("Difference error: {}", e), *span)]
                 })?;
             }
@@ -148,7 +169,7 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
             let mut result = convert_node(&children[0])?;
             for child in &children[1..] {
                 let other = convert_node(child)?;
-                result = result.boolean(&other, BooleanOp::Intersection).map_err(|e| {
+                result = boolean(&result, &other, BooleanOp::Intersection).map_err(|e| {
                     vec![Diagnostic::error(format!("Intersection error: {}", e), *span)]
                 })?;
             }
@@ -180,61 +201,6 @@ fn convert_node(node: &GeometryNode) -> Result<Manifold, Vec<Diagnostic>> {
             Ok(result)
         }
     }
-}
-
-fn manifold_to_cross_section(manifold: &Manifold) -> crate::error::Result<crate::core::cross_section::CrossSection> {
-    use crate::core::cross_section::CrossSection;
-
-    let mut contours = Vec::new();
-    let mut visited_edges = vec![false; manifold.half_edges.len()];
-
-    for (i, edge) in manifold.half_edges.iter().enumerate() {
-        if visited_edges[i] { continue; }
-
-        let face = &manifold.faces[edge.face as usize];
-        let pair_idx = edge.pair_edge;
-        if pair_idx == u32::MAX { continue; }
-        let pair_face = &manifold.faces[manifold.half_edges[pair_idx as usize].face as usize];
-
-        if face.normal.z > 0.9 && pair_face.normal.z < -0.9 {
-            let mut contour = Vec::new();
-            let mut curr_edge_idx = i as u32;
-
-            loop {
-                if visited_edges[curr_edge_idx as usize] { break; }
-                visited_edges[curr_edge_idx as usize] = true;
-
-                let e = &manifold.half_edges[curr_edge_idx as usize];
-                let v = &manifold.vertices[e.start_vert as usize];
-                contour.push(glam::DVec2::new(v.position.x, v.position.y));
-
-                let mut found_next = false;
-                let mut walker = e.next_edge;
-                loop {
-                    let walker_pair = manifold.half_edges[walker as usize].pair_edge;
-                    let pair_face_z = manifold.faces[manifold.half_edges[walker_pair as usize].face as usize].normal.z;
-
-                    if pair_face_z < -0.9 {
-                        curr_edge_idx = walker;
-                        found_next = true;
-                        break;
-                    }
-
-                    walker = manifold.half_edges[walker_pair as usize].next_edge;
-                    if walker == e.next_edge { break; }
-                }
-
-                if !found_next { break; }
-                if curr_edge_idx == i as u32 { break; }
-            }
-
-            if !contour.is_empty() {
-                contours.push(contour);
-            }
-        }
-    }
-
-    Ok(CrossSection::from_contours(contours))
 }
 
 #[cfg(test)]
@@ -295,6 +261,20 @@ mod tests {
     }
 
     #[test]
+    fn test_cylinder_generation() {
+        let mesh = from_source("cylinder(h=10, r1=5, r2=5);").expect("compilation succeeds");
+        assert!(mesh.vertex_count() >= 6);
+    }
+
+    #[test]
+    fn test_polyhedron_generation() {
+        let source = "polyhedron(points=[[0,0,0], [1,0,0], [0,1,0], [0,0,1]], faces=[[0,1,2], [0,3,1], [0,2,3], [1,3,2]]);";
+        let mesh = from_source(source).expect("compilation succeeds");
+        assert_eq!(mesh.vertex_count(), 4);
+        assert_eq!(mesh.triangle_count(), 4);
+    }
+
+    #[test]
     fn test_translate_generation() {
         let mesh = from_source("translate([10, 0, 0]) cube(1);").expect("compilation succeeds");
         assert_eq!(mesh.vertex_count(), 8);
@@ -335,7 +315,7 @@ mod tests {
     fn test_square_generation() {
         let mesh = from_source("square(10);").expect("compilation succeeds");
         assert_eq!(mesh.vertex_count(), 4);
-        assert_eq!(mesh.triangle_count(), 4); // Double sided
+        assert_eq!(mesh.triangle_count(), 2); // Single sided (2 triangles)
     }
 
     #[test]
@@ -348,6 +328,6 @@ mod tests {
     fn test_polygon_generation() {
         let mesh = from_source("polygon([[0,0], [10,0], [0,10]]);").expect("compilation succeeds");
         assert_eq!(mesh.vertex_count(), 3);
-        assert_eq!(mesh.triangle_count(), 2); // 1 front + 1 back
+        assert_eq!(mesh.triangle_count(), 1); // Single sided
     }
 }
