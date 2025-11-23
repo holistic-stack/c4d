@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::core::ds::{Face, HalfEdge, Vertex, NO_INDEX};
 use crate::core::vec3::Vec3;
-use crate::error::ManifoldError;
+use crate::error::Error;
 use crate::Manifold;
 
 /// Minimum allowed fragment count to avoid degenerate meshes and match OpenSCAD's defaults.
@@ -40,9 +40,9 @@ impl Sphere {
     /// let sphere = Sphere::new(5.0, 0).unwrap();
     /// assert_eq!(sphere.fragments(), 3); // segments clamped to minimum
     /// ```
-    pub fn new(radius: f64, segments: u32) -> Result<Self, ManifoldError> {
+    pub fn new(radius: f64, segments: u32) -> Result<Self, Error> {
         if radius <= 0.0 {
-            return Err(ManifoldError::InvalidTopology(
+            return Err(Error::InvalidTopology(
                 "sphere radius must be positive".to_string(),
             ));
         }
@@ -72,7 +72,7 @@ impl Sphere {
     /// ```text
     /// Sphere::new(2.0, 24).to_manifold() -> vertex_count > 0
     /// ```
-    pub fn to_manifold(&self) -> Result<Manifold, ManifoldError> {
+    pub fn to_manifold(&self) -> Result<Manifold, Error> {
         let vertices = self.generate_vertices();
         let faces = self.generate_faces();
         self.build_half_edge(&vertices, &faces)
@@ -216,7 +216,7 @@ impl Sphere {
         &self,
         vertices: &[Vec3],
         faces: &[[u32; 3]],
-    ) -> Result<Manifold, ManifoldError> {
+    ) -> Result<Manifold, Error> {
         let mut manifold = Manifold::new();
         manifold.vertices = vertices
             .iter()
@@ -259,7 +259,7 @@ impl Sphere {
             let key = (edge.end_vert, edge.start_vert);
             edge.pair_edge = *edge_map
                 .get(&key)
-                .ok_or_else(|| ManifoldError::InvalidTopology("sphere mesh has open edges".into()))?;
+                .ok_or_else(|| Error::InvalidTopology("sphere mesh has open edges".into()))?;
         }
 
         Ok(manifold)

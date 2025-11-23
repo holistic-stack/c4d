@@ -1,5 +1,4 @@
 use super::*;
-use crate::core::vec3::Vec3;
 
 #[test]
 fn test_square_validity() {

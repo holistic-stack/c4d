@@ -13,3 +13,5 @@ openscad-eval = { path = "../openscad-eval" }
 thiserror.workspace = true
 robust.workspace = true
 earcutr = "0.5.0"
+cavalier_contours = "0.6.0"
+chull = "0.2.4"
