@@ -210,6 +210,16 @@ Key rules:
 - **`libs/openscad-ast`**  
   - Owns the **typed AST** data structures.  
   - Converts CST to AST, normalizing positional and named arguments (e.g. `cube(size=[10,10,10], center=true)` and `cube([10,10,10], center=false)`) into strongly-typed nodes validated by evaluator tests.
+  - **Modular Architecture** (SRP-compliant):
+    - `parser/mod.rs`: Public API and entry point (`parse_to_ast`)
+    - `parser/statement.rs`: Top-level statement dispatcher
+    - `parser/module_call.rs`: Primitive parsing (cube, sphere, cylinder)
+    - `parser/transform_chain.rs`: Transform operations (translate, rotate, scale)
+    - `parser/assignments.rs`: Variable declarations
+    - `parser/arguments/`: Specialized argument parsers per primitive
+      - `cube.rs`, `sphere.rs`, `cylinder.rs`: Primitive-specific argument parsing
+      - `shared.rs`: Common utilities (`parse_f64`, `parse_u32`, `parse_bool`, `parse_vector`)
+    - All files under 500 lines, comprehensive documentation, tests co-located with code
 
 - **`libs/openscad-eval`**  
   - Interprets the AST and produces **Evaluated AST** (Geometry IR).  

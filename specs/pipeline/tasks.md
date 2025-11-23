@@ -269,6 +269,17 @@ Provide a parse-only and structural analysis pipeline for OpenSCAD using `libs/o
 - Given a basic OpenSCAD snippet (e.g. `cube(10);`), the server publishes either zero diagnostics or a well-formed list of syntax diagnostics.  
 - Parser integration lives only in `libs/openscad-parser` and `libs/openscad-lsp`; no other crate re-implements Tree-sitter wiring or depends on `web-tree-sitter`.
 
+**Task 1.4 Status:**
+- `libs/openscad-lsp` implemented with tower-lsp server and Tree-sitter integration.
+- **Parser SRP Refactoring Completed** (see `specs/split-parser/` for details):
+  - `libs/openscad-ast` refactored into modular architecture following SRP
+  - Created focused modules: `statement.rs`, `module_call.rs`, `transform_chain.rs`, `assignments.rs`
+  - Argument parsing split into `arguments/` submodules: `cube.rs`, `sphere.rs`, `cylinder.rs`, `shared.rs`
+  - All modules under 500 lines with comprehensive documentation and co-located tests
+  - 20 tests passing, zero regressions
+  - Public API unchanged (`parse_to_ast` remains the entry point)
+  - See `specs/split-parser/tasks.md` for complete refactoring breakdown
+
 ---
 
 ### Task 1.5 – Enforce Pipeline Boundaries 
