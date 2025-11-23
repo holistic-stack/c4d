@@ -19,7 +19,7 @@ pub mod nodes;
 #[cfg(feature = "parser")]
 pub mod parser;
 
-pub use ast_types::{CubeSize, Statement};
+pub use ast_types::{CubeSize, SquareSize, Statement};
 pub use diagnostic::{Diagnostic, Severity};
 pub use nodes::{AstMetadata, AstNode, Span, SpanError};
 #[cfg(feature = "parser")]

@@ -4,7 +4,7 @@
 //! 1.1 vertical slice expectations while leaving room for future expansion.
 
 use config::constants::STACKER_STACK_SIZE_BYTES;
-use glam::{DMat4, DVec3};
+use glam::{DMat4, DVec3, DVec2};
 use stacker::maybe_grow;
 use thiserror::Error;
 
@@ -96,15 +96,6 @@ impl<F: FileSystem + Clone> Evaluator<F> {
                     context.set_variable(name, *value);
                 }
                 Statement::Sphere { radius, fa, fs, fn_, span } => {
-                    // Update context with local variables if present
-                    // (OpenSCAD scoping rules are complex, but for primitives, params override globals)
-                    // For now, we assume $fn/$fa/$fs passed as args should influence the resolution calculation.
-                    // However, the current EvaluationContext manages global state.
-                    // For primitives, we should probably compute the effective resolution locally
-                    // or temporarily override the context.
-                    // Since the context is mutable, we can override and restore, but `evaluate_statements` is sequential.
-                    // Primitives are terminals in this simple evaluator.
-
                     let effective_fn = fn_.unwrap_or(context.get_fn());
                     let effective_fa = fa.unwrap_or(context.get_fa());
                     let effective_fs = fs.unwrap_or(context.get_fs());
@@ -113,6 +104,44 @@ impl<F: FileSystem + Clone> Evaluator<F> {
 
                     let node = GeometryNode::sphere(*radius, segments, *span)?;
                     nodes.push(node);
+                }
+                Statement::Cylinder { height, r1, r2, center, fa, fs, fn_, span } => {
+                     let effective_fn = fn_.unwrap_or(context.get_fn());
+                    let effective_fa = fa.unwrap_or(context.get_fa());
+                    let effective_fs = fs.unwrap_or(context.get_fs());
+
+                    // Use max radius for resolution calculation
+                    let max_radius = r1.max(*r2);
+                    let segments = compute_segments(max_radius, effective_fn, effective_fa, effective_fs);
+
+                    let node = GeometryNode::cylinder(*height, *r1, *r2, *center, segments, *span)?;
+                    nodes.push(node);
+                }
+                Statement::Square { size, center, span } => {
+                    let vec = size.to_vec2();
+                    let size_vec = DVec2::new(vec[0], vec[1]);
+                    let node = GeometryNode::square(size_vec, *center, *span)?;
+                    nodes.push(node);
+                }
+                Statement::Circle { radius, fa, fs, fn_, span } => {
+                    let effective_fn = fn_.unwrap_or(context.get_fn());
+                    let effective_fa = fa.unwrap_or(context.get_fa());
+                    let effective_fs = fs.unwrap_or(context.get_fs());
+
+                    let segments = compute_segments(*radius, effective_fn, effective_fa, effective_fs);
+
+                    let node = GeometryNode::circle(*radius, segments, *span)?;
+                    nodes.push(node);
+                }
+                Statement::Polygon { points, paths, convexity, span } => {
+                     let points_vec: Vec<DVec2> = points.iter().map(|p| DVec2::new(p[0], p[1])).collect();
+                     let paths_vec = paths.clone().unwrap_or_else(|| {
+                         // Default path is 0..N-1
+                         vec![(0..points.len()).collect()]
+                     });
+
+                     let node = GeometryNode::polygon(points_vec, paths_vec, *convexity, *span)?;
+                     nodes.push(node);
                 }
                 Statement::Translate { vector, child, span } => {
                     let translation = DVec3::from_array(*vector);

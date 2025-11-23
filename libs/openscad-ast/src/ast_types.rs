@@ -75,6 +75,54 @@ pub enum Statement {
         /// Source span for diagnostics.
         span: Span,
     },
+    /// A square 2D primitive.
+    ///
+    /// Examples:
+    /// - `square(10);`
+    /// - `square([10, 20]);`
+    /// - `square(10, center=true);`
+    Square {
+        /// Size of the square (scalar or vector).
+        size: SquareSize,
+        /// Whether the square is centered.
+        center: bool,
+        /// Source span.
+        span: Span,
+    },
+    /// A circle 2D primitive.
+    ///
+    /// Examples:
+    /// - `circle(10);`
+    /// - `circle(r=10);`
+    /// - `circle(d=20);`
+    Circle {
+        /// Radius of the circle.
+        radius: f64,
+        /// Resolution overrides.
+        fa: Option<f64>,
+        /// Resolution overrides.
+        fs: Option<f64>,
+        /// Resolution overrides.
+        fn_: Option<u32>,
+        /// Source span.
+        span: Span,
+    },
+    /// A polygon 2D primitive.
+    ///
+    /// Examples:
+    /// - `polygon([[0,0], [10,0], [0,10]]);`
+    /// - `polygon(points=[...], paths=[...], convexity=2);`
+    Polygon {
+        /// List of points (vertices).
+        points: Vec<[f64; 2]>,
+        /// List of paths (indices). If None, implicitly [0..n-1].
+        /// Can be a single path or multiple paths (holes).
+        paths: Option<Vec<Vec<usize>>>,
+        /// Convexity parameter.
+        convexity: u32,
+        /// Source span.
+        span: Span,
+    },
     /// A variable assignment.
     ///
     /// Examples:
@@ -163,6 +211,33 @@ impl CubeSize {
     }
 }
 
+/// Size specification for a square.
+///
+/// # Examples
+/// ```
+/// use openscad_ast::SquareSize;
+///
+/// let scalar = SquareSize::Scalar(10.0);
+/// let vector = SquareSize::Vector([1.0, 2.0]);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub enum SquareSize {
+    /// A scalar size (applies to all dimensions).
+    Scalar(f64),
+    /// A vector size (x, y).
+    Vector([f64; 2]),
+}
+
+impl SquareSize {
+    /// Converts the square size to a 2D vector.
+    pub fn to_vec2(&self) -> [f64; 2] {
+        match self {
+            SquareSize::Scalar(s) => [*s, *s],
+            SquareSize::Vector(v) => *v,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +252,18 @@ mod tests {
     fn test_cube_size_vector_to_vec3() {
         let size = CubeSize::Vector([1.0, 2.0, 3.0]);
         assert_eq!(size.to_vec3(), [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_square_size_scalar_to_vec2() {
+        let size = SquareSize::Scalar(10.0);
+        assert_eq!(size.to_vec2(), [10.0, 10.0]);
+    }
+
+    #[test]
+    fn test_square_size_vector_to_vec2() {
+        let size = SquareSize::Vector([1.0, 2.0]);
+        assert_eq!(size.to_vec2(), [1.0, 2.0]);
     }
 
     #[test]
