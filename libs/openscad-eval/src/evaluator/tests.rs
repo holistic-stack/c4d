@@ -46,13 +46,15 @@ fn evaluate_cube_vector_literal() {
 /// ```
 /// use openscad_eval::{evaluator::Evaluator, filesystem::InMemoryFilesystem};
 /// let evaluator = Evaluator::new(InMemoryFilesystem::default());
-/// assert!(evaluator.evaluate_source("cylinder(1);").is_err());
+/// assert!(evaluator.evaluate_source("unknown(1);").is_err());
 /// ```
 #[test]
 fn evaluate_unsupported_source() {
     let evaluator = Evaluator::new(InMemoryFilesystem::default());
-    // sphere is now supported, so we use cylinder
-    let err = evaluator.evaluate_source("cylinder(1);").unwrap_err();
+    let err = evaluator.evaluate_source("unknown(1);").unwrap_err();
+    // Parser returns no AST statements for unknown modules because we filter out None in parse_module_call
+    // and parse_to_ast doesn't fail, it just returns empty list if only unknown statements are present.
+    // Evaluator checks for empty AST and returns UnsupportedSource.
     assert!(matches!(err, EvaluationError::UnsupportedSource { .. }));
 }
 

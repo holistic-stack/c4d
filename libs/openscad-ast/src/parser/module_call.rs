@@ -9,6 +9,9 @@
 //! - **cube**: Rectangular prisms with scalar or vector sizing
 //! - **sphere**: Spheres with radius and fragment control
 //! - **cylinder**: Cylinders and cones with height and radius parameters
+//! - **square**: 2D Rectangles with scalar or vector sizing
+//! - **circle**: 2D Circles with radius/diameter and fragment control
+//! - **polygon**: 2D Polygons with points and paths
 //!
 //! # Design Pattern
 //!
@@ -43,6 +46,9 @@ use tree_sitter::Node;
 use super::arguments::cube::parse_cube_arguments;
 use super::arguments::sphere::parse_sphere_arguments;
 use super::arguments::cylinder::parse_cylinder_arguments;
+use super::arguments::square::parse_square_arguments;
+use super::arguments::circle::parse_circle_arguments;
+use super::arguments::polygon::parse_polygon_arguments;
 
 /// Parses a module call node from the CST into a primitive statement.
 ///
@@ -66,6 +72,9 @@ use super::arguments::cylinder::parse_cylinder_arguments;
 /// - `cube(size, center)` → [`Statement::Cube`]
 /// - `sphere(r, $fn, $fa, $fs)` → [`Statement::Sphere`]
 /// - `cylinder(h, r/r1/r2, center, $fn, $fa, $fs)` → [`Statement::Cylinder`]
+/// - `square(size, center)` → [`Statement::Square`]
+/// - `circle(r|d, $fn, $fa, $fs)` → [`Statement::Circle`]
+/// - `polygon(points, paths, convexity)` → [`Statement::Polygon`]
 ///
 /// # Examples
 ///
@@ -145,6 +154,54 @@ pub fn parse_module_call(
                     Span::new(node.start_byte(), node.end_byte()).unwrap(),
                 )
                 .with_hint("Try: cylinder(h=20, r=5);")])
+            }
+        }
+        "square" => {
+            let args_node = children.iter().find(|n| n.kind() == "arguments");
+            if let Some(args) = args_node {
+                let (size, center) = parse_square_arguments(args, source)?;
+                let span = Span::new(node.start_byte(), node.end_byte())
+                    .map_err(|e| vec![Diagnostic::error(format!("Invalid span: {}", e), Span::new(0, 1).unwrap())])?;
+
+                Ok(Some(Statement::Square { size, center, span }))
+            } else {
+                 Err(vec![Diagnostic::error(
+                    "square() requires arguments",
+                    Span::new(node.start_byte(), node.end_byte()).unwrap(),
+                )
+                .with_hint("Try: square(10); or square([10, 20]);")])
+            }
+        }
+        "circle" => {
+            let args_node = children.iter().find(|n| n.kind() == "arguments");
+            if let Some(args) = args_node {
+                let (radius, fa, fs, fn_) = parse_circle_arguments(args, source)?;
+                let span = Span::new(node.start_byte(), node.end_byte())
+                    .map_err(|e| vec![Diagnostic::error(format!("Invalid span: {}", e), Span::new(0, 1).unwrap())])?;
+
+                Ok(Some(Statement::Circle { radius, fa, fs, fn_, span }))
+            } else {
+                 Err(vec![Diagnostic::error(
+                    "circle() requires arguments",
+                    Span::new(node.start_byte(), node.end_byte()).unwrap(),
+                )
+                .with_hint("Try: circle(10); or circle(r=10);")])
+            }
+        }
+        "polygon" => {
+            let args_node = children.iter().find(|n| n.kind() == "arguments");
+            if let Some(args) = args_node {
+                let (points, paths, convexity) = parse_polygon_arguments(args, source)?;
+                let span = Span::new(node.start_byte(), node.end_byte())
+                    .map_err(|e| vec![Diagnostic::error(format!("Invalid span: {}", e), Span::new(0, 1).unwrap())])?;
+
+                Ok(Some(Statement::Polygon { points, paths, convexity, span }))
+            } else {
+                 Err(vec![Diagnostic::error(
+                    "polygon() requires arguments",
+                    Span::new(node.start_byte(), node.end_byte()).unwrap(),
+                )
+                .with_hint("Try: polygon(points=[[0,0], [10,0], [0,10]]);")])
             }
         }
         // Unknown module - return None to allow extensibility

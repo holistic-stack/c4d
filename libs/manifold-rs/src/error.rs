@@ -14,4 +14,8 @@ pub enum ManifoldError {
     /// A generic error for when a boolean operation fails.
     #[error("Boolean operation failed: {0}")]
     BooleanError(String),
+
+    /// Error when constructing geometry (e.g. invalid parameters).
+    #[error("Invalid geometry: {message}")]
+    InvalidGeometry { message: String },
 }

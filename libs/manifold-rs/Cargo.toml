@@ -12,3 +12,4 @@ openscad-ast = { path = "../openscad-ast" }
 openscad-eval = { path = "../openscad-eval" }
 thiserror.workspace = true
 robust.workspace = true
+earcutr = "0.5.0"
