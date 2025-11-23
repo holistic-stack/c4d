@@ -350,6 +350,15 @@ No further setup required for Phase 1 integration.
   - Keep regression tests comparing cap heights, vertex/triangle counts, and fragment clamping to guard against regressions. Future work in this phase focuses on maintaining parity as new upstream behaviour emerges.  
   - **Cylinder & Polyhedron Parity Prep:** research `CylinderNode::createGeometry` + `PolyhedronNode::createGeometry` in `openscad/src/core/primitives.cc` and capture requirements for `$fn/$fa/$fs` handling on cylinders and winding/validation rules for arbitrary polyhedra. (See Phase 5 below for concrete implementation tasks.)
 
+- **Phase 4b – 2D Primitives & Outline Kernel**  
+  - Port OpenSCAD’s 2D primitives from `primitives.cc`: `square`, `circle`, and `polygon`. Each primitive must emit identical vertex ordering, winding, and diagnostics.  
+  - **`square()`**: mirror `SquareNode::createGeometry` with scalar/vector `size`, optional `center`, range checking, and AST validation that matches the C++ warnings.  
+  - **`circle()`**: reuse `CurveDiscretizer::getCircularSegmentCount` (with `$fn/$fa/$fs`) to tessellate outlines exactly like `CircleNode::createGeometry`, honoring `r`/`d` precedence and range checks.  
+  - **`polygon()`**: support both implicit outer path (when `paths` undefined) and explicit `paths` with hole semantics (first outline positive, subsequent outlines negative) as implemented in `PolygonNode::createGeometry`, including convexity clamping and index diagnostics.  
+  - Introduce a reusable 2D outline representation in `manifold-rs` (or a sibling kernel) that downstream extruders (`linear_extrude`, `rotate_extrude`) can consume without re-tessellating.  
+  - Tests: parity fixtures comparing vertex sequences, winding, convexity, and error messages vs. OpenSCAD for representative inputs (degenerate sizes, reversed paths, invalid indices).  
+  - Documentation: record fragment math + outline semantics in `specs/split-parser` and `specs/pipeline` to keep future phases (extrusions/offset) aligned.
+
 - **Phase 5 – Cylinders, Polyhedra & Transformations**  
   - Support `translate`, `rotate`, `scale` transformations in IR and `manifold-rs`.  
   - Ensure transformations preserve and update Spans for diagnostics.  

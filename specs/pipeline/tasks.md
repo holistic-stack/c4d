@@ -642,17 +642,6 @@ Implement a robust `sphere()` primitive with resolution managed by `$fn`, `$fa`,
    - `libs/manifold-rs` includes regression tests for sphere validation, bounding boxes, and subdivision scaling.  
    - `libs/openscad-eval` contains unit tests for the resolution helper plus evaluator scenarios where `$fn`, `$fa`, `$fs` override each other.  
    - Doc tests capture the helper’s formula for future reference.
-
-**Acceptance Criteria**
-
-- `sphere(r=10);` produces a valid manifold with reasonable tessellation.  
-- Changing `$fn` or `$fa/$fs` influences the sphere resolution as expected, verified via evaluator tests.  
-- An additional regression suite demonstrates that the parity implementation matches OpenSCAD output for representative `$fn/$fa/$fs` combinations (vertex count, triangle count, and optional checksum comparisons).
-
----
-
-## Phase 5 – Transformations
-
 ### Task 5.1 – Transform Nodes & Application
 
 **Goal**  
