@@ -1,7 +1,7 @@
 //! Circle primitive implementation.
 
 use crate::{
-    error::ManifoldError,
+    error::Error,
     primitives::triangulate::manifold_from_contours,
     Manifold,
 };
@@ -17,15 +17,15 @@ use glam::DVec2;
 /// # Returns
 ///
 /// * `Ok(Manifold)` - A valid circle manifold (as a flat 3D mesh, double-sided).
-/// * `Err(ManifoldError)` - If the circle construction fails.
-pub fn circle(radius: f64, segments: u32) -> Result<Manifold, ManifoldError> {
+/// * `Err(Error)` - If the circle construction fails.
+pub fn circle(radius: f64, segments: u32) -> Result<Manifold, Error> {
     if radius <= 0.0 {
-         return Err(ManifoldError::InvalidGeometry {
+         return Err(Error::InvalidGeometry {
              message: format!("Circle radius must be positive: {}", radius)
          });
     }
     if segments < 3 {
-        return Err(ManifoldError::InvalidGeometry {
+        return Err(Error::InvalidGeometry {
              message: format!("Circle must have at least 3 segments: {}", segments)
          });
     }

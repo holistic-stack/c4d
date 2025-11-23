@@ -10,7 +10,7 @@
 mod tests {
     use crate::core::vec3::Vec3;
     use crate::primitives::cube::cube;
-    use crate::ManifoldError;
+    use crate::Error;
 
     /// Test that a unit cube has 8 vertices.
     ///
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn test_cube_rejects_negative_size() {
         let result = cube(Vec3::new(-1.0, 1.0, 1.0), false);
-        assert!(matches!(result, Err(ManifoldError::InvalidTopology(_))));
+        assert!(matches!(result, Err(Error::InvalidTopology(_))));
     }
 
     /// Test that cube rejects zero size.
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn test_cube_rejects_zero_size() {
         let result = cube(Vec3::new(0.0, 1.0, 1.0), false);
-        assert!(matches!(result, Err(ManifoldError::InvalidTopology(_))));
+        assert!(matches!(result, Err(Error::InvalidTopology(_))));
     }
 
     /// Test that all 24 half-edges exist (12 triangles * 3 edges / 2 for pairing).

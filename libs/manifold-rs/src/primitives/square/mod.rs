@@ -1,7 +1,7 @@
 //! Square primitive implementation.
 
 use crate::{
-    error::ManifoldError,
+    error::Error,
     primitives::triangulate::manifold_from_contours,
     Manifold,
 };
@@ -17,10 +17,10 @@ use glam::{DVec2, DVec3};
 /// # Returns
 ///
 /// * `Ok(Manifold)` - A valid square manifold (as a flat 3D mesh).
-/// * `Err(ManifoldError)` - If the square construction fails.
-pub fn square(size: DVec2, center: bool) -> Result<Manifold, ManifoldError> {
+/// * `Err(Error)` - If the square construction fails.
+pub fn square(size: DVec2, center: bool) -> Result<Manifold, Error> {
     if size.x <= 0.0 || size.y <= 0.0 {
-         return Err(ManifoldError::InvalidGeometry {
+         return Err(Error::InvalidGeometry {
              message: format!("Square size must be positive: {:?}", size)
          });
     }

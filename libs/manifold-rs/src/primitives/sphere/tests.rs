@@ -59,7 +59,7 @@ fn sphere_latlong_counts_match_openscad() {
 #[test]
 fn sphere_rejects_non_positive_radius() {
     let err = Sphere::new(0.0, 8).expect_err("radius validation");
-    assert!(matches!(err, ManifoldError::InvalidTopology(_)));
+    assert!(matches!(err, Error::InvalidTopology(_)));
 }
 
 /// Clamps fragment counts to the OpenSCAD minimum (three) when the caller provides

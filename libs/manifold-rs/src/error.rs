@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// Errors that can occur during manifold operations.
 #[derive(Error, Debug)]
-pub enum ManifoldError {
+pub enum Error {
     /// The topology is invalid (e.g., open edges, non-manifold vertices).
     #[error("Invalid topology: {0}")]
     InvalidTopology(String),
@@ -19,3 +19,6 @@ pub enum ManifoldError {
     #[error("Invalid geometry: {message}")]
     InvalidGeometry { message: String },
 }
+
+/// A specialized Result type for Manifold operations.
+pub type Result<T> = std::result::Result<T, Error>;

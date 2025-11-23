@@ -1,7 +1,8 @@
+//! Core data structures and types for the Manifold kernel.
+//!
+//! Includes vector aliases (`Vec3`) and fundamental mesh components.
+
 pub mod ds;
 pub mod vec3;
-
-// Re-export commonly used types
-pub mod half_edge {
-    pub use super::ds::{Face, HalfEdge, Vertex};
-}
+pub mod vec2;
+pub mod cross_section;

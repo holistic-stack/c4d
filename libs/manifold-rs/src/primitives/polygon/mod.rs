@@ -1,7 +1,7 @@
 //! Polygon primitive implementation.
 
 use crate::{
-    error::ManifoldError,
+    error::Error,
     primitives::triangulate::manifold_from_contours,
     Manifold,
 };
@@ -18,19 +18,19 @@ use glam::DVec2;
 /// # Returns
 ///
 /// * `Ok(Manifold)` - A valid polygon manifold (as a flat 3D mesh, double-sided).
-/// * `Err(ManifoldError)` - If the polygon construction fails.
+/// * `Err(Error)` - If the polygon construction fails.
 pub fn polygon(
     points: Vec<DVec2>,
     paths: Vec<Vec<usize>>,
     _convexity: u32,
-) -> Result<Manifold, ManifoldError> {
+) -> Result<Manifold, Error> {
     if points.len() < 3 {
-         return Err(ManifoldError::InvalidGeometry {
+         return Err(Error::InvalidGeometry {
              message: format!("Polygon must have at least 3 points: {}", points.len())
          });
     }
     if paths.is_empty() {
-        return Err(ManifoldError::InvalidGeometry {
+        return Err(Error::InvalidGeometry {
              message: "Polygon must have at least one path".to_string()
          });
     }
@@ -44,7 +44,7 @@ pub fn polygon(
         let mut contour = Vec::with_capacity(path.len());
         for &idx in &path {
             if idx >= points.len() {
-                return Err(ManifoldError::IndexOutOfBounds(
+                return Err(Error::IndexOutOfBounds(
                     format!("Polygon path index {} out of bounds ({} points)", idx, points.len())
                 ));
             }

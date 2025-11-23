@@ -4,7 +4,7 @@
 //! enum with booleans and transforms.
 
 use config::constants::EPSILON_TOLERANCE;
-use glam::{DMat4, DVec3, DVec2};
+use glam::{DMat4, DVec3, DVec2, DVec4};
 use thiserror::Error;
 
 use openscad_ast::Span;
@@ -46,9 +46,41 @@ pub enum GeometryNode {
         convexity: u32,
         span: Span,
     },
+    /// Linear extrusion of a 2D child geometry.
+    LinearExtrude {
+        height: f64,
+        twist: f64,
+        slices: u32,
+        center: bool,
+        scale: DVec2,
+        convexity: u32,
+        child: Box<GeometryNode>,
+        span: Span,
+    },
+    /// Rotational extrusion of a 2D child geometry.
+    RotateExtrude {
+        angle: f64,
+        convexity: u32,
+        segments: u32,
+        child: Box<GeometryNode>,
+        span: Span,
+    },
     /// Transformation applied to a child geometry.
     Transform {
         matrix: DMat4,
+        child: Box<GeometryNode>,
+        span: Span,
+    },
+    /// Resize operation to fit geometry into target dimensions.
+    Resize {
+        new_size: DVec3,
+        auto: Vec<bool>, // x, y, z auto flags
+        child: Box<GeometryNode>,
+        span: Span,
+    },
+    /// Color operation to apply RGBA color to geometry.
+    Color {
+        color: DVec4,
         child: Box<GeometryNode>,
         span: Span,
     },
@@ -143,8 +175,11 @@ impl GeometryNode {
             GeometryNode::Square { size, .. } => DVec3::new(size.x, size.y, 0.0),
             GeometryNode::Circle { radius, .. } => DVec3::new(radius * 2.0, radius * 2.0, 0.0),
             GeometryNode::Polygon { .. } => DVec3::ZERO, // Bounding box calculation required for Polygon
-            // Transform doesn't have a simple size, return child size for now or TODO
+            GeometryNode::LinearExtrude { height, .. } => DVec3::new(0.0, 0.0, *height), // Placeholder
+            GeometryNode::RotateExtrude { .. } => DVec3::ZERO, // Placeholder
             GeometryNode::Transform { child, .. } => child.size(),
+            GeometryNode::Resize { new_size, .. } => *new_size,
+            GeometryNode::Color { child, .. } => child.size(),
         }
     }
 }

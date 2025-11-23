@@ -7,7 +7,7 @@ mod tests;
 
 use crate::core::ds::{Face, HalfEdge, Vertex};
 use crate::core::vec3::Vec3;
-use crate::error::ManifoldError;
+use crate::error::Error;
 use crate::Manifold;
 
 /// Creates a cube manifold.
@@ -33,10 +33,10 @@ use crate::Manifold;
 /// let (min, max) = c.bounding_box();
 /// assert_eq!(min, Vec3::new(-1.0, -1.0, -1.0));
 /// ```
-pub fn cube(size: Vec3, center: bool) -> Result<Manifold, ManifoldError> {
+pub fn cube(size: Vec3, center: bool) -> Result<Manifold, Error> {
     // Validate size
     if size.x <= 0.0 || size.y <= 0.0 || size.z <= 0.0 {
-        return Err(ManifoldError::InvalidTopology(
+        return Err(Error::InvalidTopology(
             "Cube size must be positive in all dimensions".to_string(),
         ));
     }
