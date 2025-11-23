@@ -52,6 +52,29 @@ pub enum Statement {
         /// Source span for error reporting.
         span: Span,
     },
+    /// A cylinder (or cone) primitive.
+    ///
+    /// Examples:
+    /// - `cylinder(h=20, r=5);` → height=20, r1=r2=5
+    /// - `cylinder(h=15, r1=5, r2=2, center=true, $fn=64);`
+    Cylinder {
+        /// Height of the cylinder along Z.
+        height: f64,
+        /// Bottom radius (`r1` in OpenSCAD).
+        r1: f64,
+        /// Top radius (`r2` in OpenSCAD).
+        r2: f64,
+        /// Whether the cylinder is centered around the origin.
+        center: bool,
+        /// Resolution overrides.
+        fa: Option<f64>,
+        /// Resolution overrides.
+        fs: Option<f64>,
+        /// Resolution overrides.
+        fn_: Option<u32>,
+        /// Source span for diagnostics.
+        span: Span,
+    },
     /// A variable assignment.
     ///
     /// Examples:

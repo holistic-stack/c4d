@@ -320,6 +320,31 @@ fn parse_module_call(
                 .with_hint("Try: sphere(10); or sphere(r=10);")])
             }
         }
+        "cylinder" => {
+            let args_node = children.iter().find(|n| n.kind() == "arguments");
+            if let Some(args) = args_node {
+                let (height, r1, r2, center, fa, fs, fn_) = parse_cylinder_arguments(args, source)?;
+                let span = Span::new(node.start_byte(), node.end_byte())
+                    .map_err(|e| vec![Diagnostic::error(format!("Invalid span: {}", e), Span::new(0, 1).unwrap())])?;
+
+                Ok(Some(Statement::Cylinder {
+                    height,
+                    r1,
+                    r2,
+                    center,
+                    fa,
+                    fs,
+                    fn_,
+                    span,
+                }))
+            } else {
+                Err(vec![Diagnostic::error(
+                    "cylinder() requires arguments",
+                    Span::new(node.start_byte(), node.end_byte()).unwrap(),
+                )
+                .with_hint("Try: cylinder(h=20, r=5);")])
+            }
+        }
         _ => Ok(None),
     }
 }
@@ -412,6 +437,114 @@ fn parse_u32(node: &tree_sitter::Node, source: &str) -> Result<u32, Vec<Diagnost
             Span::new(node.start_byte(), node.end_byte()).unwrap(),
         )]
     })
+}
+
+/// Parses cylinder arguments from the CST into normalized values.
+///
+/// # Examples
+/// ```
+/// use openscad_ast::parse_to_ast;
+/// let ast = parse_to_ast("cylinder(h=10, r=5);").unwrap();
+/// assert!(matches!(ast[0], openscad_ast::Statement::Cylinder { .. }));
+/// ```
+fn parse_cylinder_arguments(
+    args_node: &tree_sitter::Node,
+    source: &str,
+) -> Result<(f64, f64, f64, bool, Option<f64>, Option<f64>, Option<u32>), Vec<Diagnostic>> {
+    let mut cursor = args_node.walk();
+    let mut height: Option<f64> = None;
+    let mut radius: Option<f64> = None;
+    let mut diameter: Option<f64> = None;
+    let mut r1: Option<f64> = None;
+    let mut r2: Option<f64> = None;
+    let mut d1: Option<f64> = None;
+    let mut d2: Option<f64> = None;
+    let mut center: Option<bool> = None;
+    let mut fa: Option<f64> = None;
+    let mut fs: Option<f64> = None;
+    let mut fn_: Option<u32> = None;
+    let mut positional_index = 0;
+
+    for child in args_node.children(&mut cursor) {
+        let kind = child.kind();
+
+        if kind == "assignment" {
+            let name_node = child.child_by_field_name("name");
+            let value_node = child.child_by_field_name("value");
+
+            if let (Some(name_n), Some(value_n)) = (name_node, value_node) {
+                let param_name = &source[name_n.byte_range()];
+                match param_name {
+                    "h" => height = Some(parse_f64(&value_n, source)?),
+                    "r" => radius = Some(parse_f64(&value_n, source)?),
+                    "d" => diameter = Some(parse_f64(&value_n, source)?),
+                    "r1" => r1 = Some(parse_f64(&value_n, source)?),
+                    "r2" => r2 = Some(parse_f64(&value_n, source)?),
+                    "d1" => d1 = Some(parse_f64(&value_n, source)?),
+                    "d2" => d2 = Some(parse_f64(&value_n, source)?),
+                    "center" => center = Some(parse_bool(&value_n, source)?),
+                    "$fn" => fn_ = Some(parse_u32(&value_n, source)?),
+                    "$fa" => fa = Some(parse_f64(&value_n, source)?),
+                    "$fs" => fs = Some(parse_f64(&value_n, source)?),
+                    _ => {
+                        return Err(vec![Diagnostic::error(
+                            format!("Unknown parameter: {}", param_name),
+                            Span::new(child.start_byte(), child.end_byte()).unwrap(),
+                        )])
+                    }
+                }
+            }
+        } else if kind == "number" || kind == "integer" || kind == "float" {
+            let value = parse_f64(&child, source)?;
+            match positional_index {
+                0 => height = Some(value),
+                1 => radius = Some(value),
+                _ => {
+                    return Err(vec![Diagnostic::error(
+                        "Unexpected positional argument",
+                        Span::new(child.start_byte(), child.end_byte()).unwrap(),
+                    )])
+                }
+            }
+            positional_index += 1;
+        } else if kind == "boolean" {
+            if positional_index == 2 {
+                center = Some(parse_bool(&child, source)?);
+            } else {
+                return Err(vec![Diagnostic::error(
+                    "Unexpected boolean argument",
+                    Span::new(child.start_byte(), child.end_byte()).unwrap(),
+                )]);
+            }
+            positional_index += 1;
+        }
+    }
+
+    let height_val = height.unwrap_or(1.0);
+    let base_radius = radius.or_else(|| diameter.map(|d| d / 2.0));
+    let bottom_radius = r1
+        .or_else(|| d1.map(|d| d / 2.0))
+        .or(base_radius)
+        .unwrap_or(1.0);
+    let top_radius = r2
+        .or_else(|| d2.map(|d| d / 2.0))
+        .or(base_radius)
+        .unwrap_or(1.0);
+    let center_val = center.unwrap_or(false);
+
+    Ok((height_val, bottom_radius, top_radius, center_val, fa, fs, fn_))
+}
+
+fn parse_bool(node: &tree_sitter::Node, source: &str) -> Result<bool, Vec<Diagnostic>> {
+    let text = &source[node.byte_range()];
+    match text {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(vec![Diagnostic::error(
+            format!("Invalid boolean: {}", text),
+            Span::new(node.start_byte(), node.end_byte()).unwrap(),
+        )]),
+    }
 }
 
 /// Parses cube arguments from the CST.
@@ -549,39 +682,6 @@ fn parse_size_value(
             )])
         }
     }
-}
-
-/// Parses a vector literal from the CST.
-fn parse_vector(
-    list_node: &tree_sitter::Node,
-    source: &str,
-) -> Result<CubeSize, Vec<Diagnostic>> {
-    let mut cursor = list_node.walk();
-    let mut values = Vec::new();
-
-    for child in list_node.children(&mut cursor) {
-        let kind = child.kind();
-        if kind == "number" || kind == "integer" || kind == "float" {
-            let text = &source[child.byte_range()];
-            let value = text.parse::<f64>().map_err(|_| {
-                vec![Diagnostic::error(
-                    format!("Invalid number: {}", text),
-                    Span::new(child.start_byte(), child.end_byte()).unwrap(),
-                )]
-            })?;
-            values.push(value);
-        }
-    }
-
-    if values.len() != 3 {
-        return Err(vec![Diagnostic::error(
-            format!("cube() vector must have 3 elements, got {}", values.len()),
-            Span::new(list_node.start_byte(), list_node.end_byte()).unwrap(),
-        )
-        .with_hint("Try: cube([1, 2, 3]);")]);
-    }
-
-    Ok(CubeSize::Vector([values[0], values[1], values[2]]))
 }
 
 #[cfg(test)]
