@@ -344,32 +344,52 @@ No further setup required for Phase 1 integration.
   - Introduce an `EvaluationContext` that tracks resolution special variables (`$fn`, `$fa`, `$fs`) and other global parameters.  
   - Support `include` / `use` semantics.
 
-- **Phase 4 – Sphere & Resolution Controls**  
-  - Implement `sphere()` via the same latitude/longitude tessellation as upstream OpenSCAD (mirroring `SphereNode::createGeometry`).  
-  - Use the `EvaluationContext` resolution parameters when tessellating the sphere so `$fn/$fa/$fs` yield the same fragment counts as the C++ `CurveDiscretizer`.  
-  - Keep regression tests comparing cap heights, vertex/triangle counts, and fragment clamping to guard against regressions. Future work in this phase focuses on maintaining parity as new upstream behaviour emerges.  
-  - **Cylinder & Polyhedron Parity Prep:** research `CylinderNode::createGeometry` + `PolyhedronNode::createGeometry` in `openscad/src/core/primitives.cc` and capture requirements for `$fn/$fa/$fs` handling on cylinders and winding/validation rules for arbitrary polyhedra. (See Phase 5 below for concrete implementation tasks.)
+- **Phase 4 – 2D Primitives & Extrusions**  
+  - **2D Representation**: Implement a dedicated `Polyset` or `CrossSection` 2D type in `manifold-rs` to support 2D primitives (`square`, `circle`, `polygon`) and operations (`offset`, `projection`). This type stores contours (lists of 2D points) and supports robust triangulation (e.g. using `earcutr` or `clipper2` equivalents) for rendering as flat 3D meshes (Z=0).
+  - **Primitives**:
+    - `square(size, center)`: Generates a rectangle contour.
+    - `circle(r|d, $fn)`: Generates a approximated circle contour.
+    - `polygon(points, paths)`: Handles simple and multi-contour polygons.
+  - **Extrusions**:
+    - `linear_extrude(height, twist, slices, center, convexity)`: Implemented via a "slice-and-stitch" algorithm.
+      - Generate `slices + 1` copies of the 2D profile, each rotated by `i * twist/slices` and translated by `i * height/slices`.
+      - Stitch corresponding vertices between slices to form side faces.
+      - Triangulate top/bottom caps (if not empty).
+    - `rotate_extrude(angle, convexity, $fn)`: Implemented via a "revolve-and-cap" algorithm.
+      - Sweep the 2D profile around the Z-axis in `$fn` steps.
+      - If `angle < 360`, generate explicit start/end caps by triangulating the profile.
+  - **Tests**: Parameter exhaustiveness (twist behavior, partial angles), vertex counts, and validity checks.
 
-- **Phase 4b – 2D Primitives & Outline Kernel**  
-  - Port OpenSCAD’s 2D primitives from `primitives.cc`: `square`, `circle`, and `polygon`. Each primitive must emit identical vertex ordering, winding, and diagnostics.  
-  - **`square()`**: mirror `SquareNode::createGeometry` with scalar/vector `size`, optional `center`, range checking, and AST validation that matches the C++ warnings.  
-  - **`circle()`**: reuse `CurveDiscretizer::getCircularSegmentCount` (with `$fn/$fa/$fs`) to tessellate outlines exactly like `CircleNode::createGeometry`, honoring `r`/`d` precedence and range checks.  
-  - **`polygon()`**: support both implicit outer path (when `paths` undefined) and explicit `paths` with hole semantics (first outline positive, subsequent outlines negative) as implemented in `PolygonNode::createGeometry`, including convexity clamping and index diagnostics.  
-  - Introduce a reusable 2D outline representation in `manifold-rs` (or a sibling kernel) that downstream extruders (`linear_extrude`, `rotate_extrude`) can consume without re-tessellating.  
-  - Tests: parity fixtures comparing vertex sequences, winding, convexity, and error messages vs. OpenSCAD for representative inputs (degenerate sizes, reversed paths, invalid indices).  
-  - Documentation: record fragment math + outline semantics in `specs/split-parser` and `specs/pipeline` to keep future phases (extrusions/offset) aligned.
+- **Phase 5 – Transformations & Modifiers**  
+  - **Basic Transforms**: `translate`, `rotate`, `scale`, `mirror`, `multmatrix` implemented via 4x4 matrix multiplication on the underlying Manifold vertices.
+  - **`resize([x,y,z], auto)`**:
+    - Compute the current bounding box.
+    - Calculate scale factors: if `auto`, preserve aspect ratio based on specified dimensions; otherwise scale to target size.
+    - Apply `scale()` operation.
+  - **`color(c)`**:
+    - Wrap `Manifold` in a structure that associates geometry with material/color metadata (e.g. `struct ScadObject { mesh: Manifold, color: Option<Color> }`).
+    - Update `union/difference/intersection` to propagate color from the first (primary) operand unless overridden.
+  - **`offset(r|delta, chamfer)`**:
+    - Use a robust 2D polygon offsetting library (e.g. `cavalier_contours` or `geo` crate bindings to Clipper) to compute parallel contours.
+    - Support both rounded (`r`) and straight (`delta` + `chamfer`) offsets.
 
-- **Phase 5 – Cylinders, Polyhedra & Transformations**  
-  - Support `translate`, `rotate`, `scale` transformations in IR and `manifold-rs`.  
-  - Ensure transformations preserve and update Spans for diagnostics.  
-  - **Cylinder parity:** add evaluator + `manifold-rs` primitives that replicate OpenSCAD cylinders (including cone/inverted-cone variants, centered vs non-centered heights, and `$fn/$fa/$fs` driven fragment counts). Tests will compare vertex counts, cap winding, and parameter validation with upstream.  
-  - **Polyhedron parity:** map `polyhedron(points, faces, convexity)` into IR + `manifold-rs`, mirroring the upstream validation rules (vector parsing, face reversal, convexity flag, and strict error logging). Tests cover valid tetrahedron cases, invalid indices, <3 vertex rejection, and consistent diagnostics.  
-  - Update docs/tests whenever OpenSCAD introduces changes so parity remains explicit.
+- **Phase 6 – Advanced CSG & Hulls**  
+  - **Boolean Operations**:
+    - `union`, `difference`, `intersection` delegating to Manifold's robust boolean kernel.
+    - Ensure proper handling of coplanar faces and distinct mesh islands.
+  - **`hull()`**:
+    - **2D**: Convex hull of all input points (Graham scan or Monotone Chain).
+    - **3D**: 3D Convex Hull of all input vertices using a robust algorithms (e.g. QuickHull from `quickhull` crate).
+    - Efficiently combines multiple child objects by collecting all their vertices and computing the hull of the set.
+  - **`minkowski()`**:
+    - **2D/3D Convex**: Implemented as the Convex Hull of the set of all point sums `{a + b | a ∈ A, b ∈ B}`.
+    - **General Case**: Fallback to iterative union of translated copies (standard OpenSCAD approach) or decomposition into convex parts if feasible.
+    - Optimize for common cases (e.g. minkowski with a cube/sphere) where efficient kernels exist.
 
-- **Phase 6 – Boolean Operations**  
-  - Implement robust `union`, `difference`, and `intersection`.  
-  - Use robust predicates, R-Tree or BVH for broad phase, and correct retriangulation.  
-  - Add fuzz testing to validate manifold invariants.
+- **Phase 7 – Optimization & Cleanup**
+  - Optimize WASM size and start-up time.
+  - Finalize documentation and examples.
+
 
 A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase lives in `tasks.md`.
 

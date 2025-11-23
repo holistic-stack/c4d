@@ -200,56 +200,12 @@ function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
 }
-/**
- * Returns the default tessellation segment count used by the geometry
- * pipeline. This is currently a thin wrapper around a shared constant.
- *
- * # Examples
- * ```
- * let segments = wasm::default_segments();
- * assert!(segments >= 3);
- * ```
- * @returns {number}
- */
-export function default_segments() {
-    const ret = wasm.default_segments();
-    return ret >>> 0;
-}
 
 function takeFromExternrefTable0(idx) {
     const value = wasm.__wbindgen_externrefs.get(idx);
     wasm.__externref_table_dealloc(idx);
     return value;
 }
-/**
- * Compiles OpenSCAD source and returns the number of geometry nodes
- * produced by the current evaluator pipeline.
- *
- * This function is the primary entry point used from JavaScript. For Rust
- * tests, prefer `compile_and_count_nodes_internal`, which exposes Rust
- * error types directly.
- *
- * # Errors
- * Returns a JavaScript error value containing a human-readable message
- * when evaluation fails.
- *
- * # Examples
- * ```no_run
- * // In JavaScript: await compile_and_count_nodes("cube(1);");
- * ```
- * @param {string} source
- * @returns {number}
- */
-export function compile_and_count_nodes(source) {
-    const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.compile_and_count_nodes(ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return ret[0] >>> 0;
-}
-
 /**
  * Compiles OpenSCAD source and renders it to a mesh.
  *
@@ -287,6 +243,22 @@ export function compile_and_render(source) {
 }
 
 /**
+ * Returns the default tessellation segment count used by the geometry
+ * pipeline. This is currently a thin wrapper around a shared constant.
+ *
+ * # Examples
+ * ```
+ * let segments = wasm::default_segments();
+ * assert!(segments >= 3);
+ * ```
+ * @returns {number}
+ */
+export function default_segments() {
+    const ret = wasm.default_segments();
+    return ret >>> 0;
+}
+
+/**
  * Installs a panic hook that forwards Rust panics to the browser console.
  *
  * # Examples
@@ -298,6 +270,35 @@ export function compile_and_render(source) {
  */
 export function init_panic_hook() {
     wasm.init_panic_hook();
+}
+
+/**
+ * Compiles OpenSCAD source and returns the number of geometry nodes
+ * produced by the current evaluator pipeline.
+ *
+ * This function is the primary entry point used from JavaScript. For Rust
+ * tests, prefer `compile_and_count_nodes_internal`, which exposes Rust
+ * error types directly.
+ *
+ * # Errors
+ * Returns a JavaScript error value containing a human-readable message
+ * when evaluation fails.
+ *
+ * # Examples
+ * ```no_run
+ * // In JavaScript: await compile_and_count_nodes("cube(1);");
+ * ```
+ * @param {string} source
+ * @returns {number}
+ */
+export function compile_and_count_nodes(source) {
+    const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.compile_and_count_nodes(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
 }
 
 /**

@@ -615,204 +615,251 @@ Represent and evaluate OpenSCAD’s resolution variables `$fn`, `$fa`, and `$fs`
 
 ---
 
-## Phase 4 – Sphere & Resolution
+## Phase 4 – 2D Primitives & Extrusions
 
-### Task 4.1 – Sphere (Icosphere) with Resolution Controls
-
+### Task 4.1 – 2D Kernel & Primitives
 **Goal**  
-Implement a robust `sphere()` primitive with resolution managed by `$fn`, `$fa`, `$fs`.
+Establish a 2D geometry representation in `libs/manifold-rs` and implement standard OpenSCAD 2D primitives (`square`, `circle`, `polygon`).
 
 **Steps**
+1. **2D Representation (`CrossSection`)**
+   - Create `libs/manifold-rs/src/core/cross_section/{mod.rs, tests.rs}`.
+   - Define a `CrossSection` struct that holds a list of contours (each contour is `Vec<Vec2>`).
+   - Implement `from_contours` and `to_polygons` (triangulation using `earcutr` or similar for 3D conversion).
+   - Ensure strict winding order enforcement (CCW for outer, CW for inner holes) to match OpenSCAD/Manifold expectations.
 
-1. **Manifold-RS Sphere (two-phase plan)**
-   1. **Current stop-gap (icosphere)** — already implemented. Keep tests and validation in place so we have a functional primitive until parity is ready.  
-   2. **Parity target (OpenSCAD lat/long tessellation)** — Re-implement `Sphere` using the exact algorithm from upstream OpenSCAD’s [`SphereNode::createGeometry`](../openscad/src/core/primitives.cc):
-      - Port the `CurveDiscretizer` logic so `$fn/$fa/$fs` produce the same `num_fragments` and `num_rings` as C++.  
-      - Generate vertices via latitude/longitude rings using the `(i + 0.5) / num_rings` polar offset and mirror the pole fan ordering.  
-      - Emit quads/triangles in the same winding order before converting to our half-edge representation.  
-      - Maintain deterministic vertex ordering so downstream boolean ops and hashes match reference OpenSCAD output.  
-      - Add fixtures that compare small reference meshes (radius + resolution combos) against serialized data from upstream OpenSCAD to prove byte-for-byte compatibility.  
-   - Half-edge construction remains shared inside the module and `from_ir` maps `GeometryNode::Sphere` errors back into diagnostics.
+2. **Primitives Implementation**
+   - **`square(size, center)`**:
+     - Generate a rectangle contour.
+     - Handle scalar vs vector `size` and `center` logic.
+   - **`circle(r|d, $fn)`**:
+     - Reuse `resolution::compute_segments` logic.
+     - Generate a regular polygon contour.
+   - **`polygon(points, paths)`**:
+     - Parse points and paths.
+     - Handle simple polygons (single path) and complex ones (multiple paths/holes).
+     - Validate `convexity` parameter (store as metadata if needed, though mainly for CSG).
 
-2. **Evaluator Context**
-   - `$fn`, `$fa`, `$fs` are already tracked; the new `evaluator::resolution::compute_segments` helper converts those values into fragment counts exactly as described in the OpenSCAD docs (if `$fn>0` use it, else `ceil(min(360/$fa, 2πr/$fs))` with a minimum of five).  
-   - `Statement::Sphere` calls the helper so context assignments, per-call overrides, and defaults all produce deterministic `segments` passed into `GeometryNode::sphere`.
+3. **Evaluator Integration**
+   - Wire `GeometryNode::Square`, `GeometryNode::Circle`, `GeometryNode::Polygon` to `manifold-rs` 2D calls.
+   - Ensure 2D shapes can be rendered (as flat 3D meshes on Z=0) for debug/preview.
 
-3. **Tests**
-   - `libs/manifold-rs` includes regression tests for sphere validation, bounding boxes, and subdivision scaling.  
-   - `libs/openscad-eval` contains unit tests for the resolution helper plus evaluator scenarios where `$fn`, `$fa`, `$fs` override each other.  
-   - Doc tests capture the helper’s formula for future reference.
-### Task 5.1 – Transform Nodes & Application
+**Acceptance Criteria**
+- `square()`, `circle()`, `polygon()` render correctly in the playground (as flat plates).
+- Vertex counts match OpenSCAD for equivalent `$fn`.
+- `CrossSection` correctly handles holes (e.g. `difference()` in 2D - *note: 2D booleans might be needed later, for now just creation*).
 
+---
+
+### Task 4.2 – Linear Extrusion (Twist & Slices)
 **Goal**  
-Support `translate`, `rotate`, and `scale` transformations end-to-end.
+Implement `linear_extrude` with full support for `height`, `twist`, `slices`, `center`, and `convexity`.
 
 **Steps**
+1. **Algorithm Implementation**
+   - In `libs/manifold-rs/src/ops/extrude.rs`:
+     - Implement `linear_extrude(cross_section, height, twist, slices, center, scale)`.
+     - **Twist Logic**:
+       - Calculate `angle_per_slice = twist / slices`.
+       - Calculate `height_per_slice = height / slices`.
+       - Loop `i` from 0 to `slices`:
+         - Generate transformed contour: Rotate by `i * angle`, Translate Z by `i * height`.
+         - Apply `scale` parameter if present (interpolated).
+       - **Stitching**:
+         - Create side quads (split to triangles) connecting indices `j` of slice `i` to `j` of slice `i+1`.
+       - **Caps**:
+         - Triangulate bottom cap (slice 0) and top cap (slice N).
+         - Reverse winding for bottom cap.
 
-1. **Evaluator (libs/openscad-eval)**  
-   - Ensure `Statement::Translate/Rotate/Scale` wrap child nodes in `GeometryNode::Transform { matrix, child, span }`, composing glam matrices in OpenSCAD’s inside-out order (comment + example in code). Use column-vector math so `translate([tx,ty,tz]) rotate([rx,ry,rz]) cube(1);` becomes `T * R * cube`, meaning the cube is rotated first, then translated, matching [OpenSCAD Transformations Manual](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations).  
-   - Add evaluator tests documenting: (a) translate-only offset affecting bounding box, (b) rotate+translate order (rotate applied before translate), (c) scale anchored at origin vs. centered geometry. Each test must include inline comments and doc examples.
+2. **Evaluator Wiring**
+   - Map `linear_extrude` arguments in `openscad-eval`.
+   - Handle parameter validation (e.g. `slices` must be >= 1 if twist is used).
 
-2. **IR + manifold bridge**  
-   - Extend `libs/manifold-rs::from_ir` with a dedicated transform applicator that multiplies vertex positions (and recomputes normals) by the evaluator-provided 4×4 matrix.  
-   - Add SRP helper (e.g., `ManifoldTransform`) with comments explaining matrix usage, plus unit tests verifying translated, rotated, and scaled cubes keep vertex/face counts and pass `validate()`.
+**Acceptance Criteria**
+- `linear_extrude(height=10, twist=360, slices=50) square(10)` produces a twisted pillar.
+- `center=true` correctly centers the mesh along Z.
+- Matching behavior with OpenSCAD for twisted extrusions.
 
-3. **End-to-end tests + docs**  
-   - Add integration test: `translate([10,0,0]) sphere(5);` verifying bounding box shift; add rotate/scale combos plus a compound snippet such as:
+---
 
+### Task 4.3 – Rotate Extrusion (Partial & Convexity)
+**Goal**  
+Implement `rotate_extrude` supporting `angle` (partial revolution) and `convexity`.
+
+**Steps**
+1. **Algorithm Implementation**
+   - In `libs/manifold-rs/src/ops/revolve.rs`:
+     - Implement `rotate_extrude(cross_section, angle, convexity, $fn)`.
+     - **Full Revolution (360)**:
+       - Use Manifold's native `Revolve` if available and robust.
+     - **Partial Revolution (< 360)**:
+       - Steps = `$fn` (or calculated from resolution vars).
+       - Generate `steps + 1` profiles rotated around Z axis.
+       - Stitch adjacent profiles to form the shell.
+       - **Capping**: Explicitly triangulate the start profile (angle 0) and end profile (angle `a`).
+       - Ensure proper winding for caps (start cap points "in", end cap points "out").
+
+2. **Evaluator Wiring**
+   - Map `rotate_extrude` parameters.
+   - Ensure `$fn` is respected for the revolution steps.
+
+**Acceptance Criteria**
+- `rotate_extrude(angle=90) square(10)` produces a quarter-torus/washer.
+- `angle=360` produces a closed torus.
+- Caps are correctly generated for partial angles (watertight mesh).
+
+---
+
+## Phase 5 – Transformations & Modifiers
+
+### Task 5.1 – Standard Transformations
+**Goal**  
+Implement `translate`, `rotate`, `scale`, `mirror`, `multmatrix`.
+
+**Steps**
+1. **Matrix Math**
+   - Ensure `glam::DMat4` is used for all transformations.
+   - Implement `multmatrix` by directly constructing a `DMat4` from the 4x4 input array.
+   - `mirror`: Construct a reflection matrix (e.g. Identity - 2*v*v^T for normal v, or just scaling -1 along axis).
+
+2. **Manifold Integration**
+   - Expose `transform(mat)` on `Manifold` type.
+   - Apply matrix to all vertices.
+   - **Normals**: Apply inverse-transpose of the upper-left 3x3 for normals (if stored).
+
+**Acceptance Criteria**
+- `multmatrix` works for shear and non-uniform scaling.
+- `mirror([1,0,0])` correctly flips the model.
+- Chained transforms work as expected.
+
+---
+
+### Task 5.2 – Resize & Auto-Scaling
+**Goal**  
+Implement `resize([x,y,z], auto)` which scales geometry to fit a specific size.
+
+**Steps**
+1. **Bounding Box**
+   - Ensure `Manifold::bounding_box()` returns accurate AABB.
+
+2. **Resize Logic**
+   - Calculate current size `curr = bbox.max - bbox.min`.
+   - Determine target size:
+     - If `auto` is true (or dimension is 0/undefined), scale factor should be uniform based on explicit dimensions to preserve aspect ratio.
+     - If explicit, `scale = target / curr`.
+   - Apply `scale([sx, sy, sz])`.
+
+**Acceptance Criteria**
+- `resize([10,0,0], auto=true) cube(5)` scales uniformly to X=10 (so Y=10, Z=10).
+- `resize([10,5,2])` distorts the cube to 10x5x2.
+
+---
+
+### Task 5.3 – Color & Metadata
+**Goal**  
+Support `color(c)` to tag geometry with RGBA values, propagating through CSG.
+
+**Steps**
+1. **Data Structure**
+   - Define `ScadObject` or `ManifoldWrapper`:
+     ```rust
+     pub struct ScadObject {
+         pub mesh: Manifold,
+         pub color: Option<Vec4>, // RGBA
+         pub id: u32,
+     }
      ```
-     translate([1,2,3]) rotate([0,90,0]) scale([2,1,1]) cube(4);
-     ```
+   - Or use Manifold's `MeshRelation` / properties if viable, but a wrapper is simpler for OpenSCAD's volume-based color.
 
-     Document in comments that evaluation applies scale → rotate → translate even though the code is written translate → rotate → scale.  
-   - Update `specs/pipeline/overview-plan.md` and this task section with diagrams / code snippets showing matrix order, referencing OpenSCAD manual links.  
-   - Document acceptance criteria in `tasks.md`: transforms compose correctly, evaluator/manifold tests cover ordering and pivot semantics, and diagnostics stay explicit (no silent fallbacks).
-
-4. **Span Propagation**
-   - Ensure spans for transformed geometry still map back to originating nodes for diagnostics.
+2. **CSG Propagation**
+   - In `union(a, b)`:
+     - OpenSCAD rule: "The result takes the color of the first operand".
+     - Implementation: Result color = `a.color` (if present), else `b.color`.
+     - *Advanced*: If OpenSCAD merges meshes preserving face colors, we need per-face attributes. For now, implement "volume color" (single color per Manifold).
+     - *Refinement*: If `union` merges disparate colored objects, we might need to store color per-vert/face in Manifold. **Decision**: Implement per-face color metadata in Manifold (using `propVert` or `triProp`) to support multicolored unions.
 
 **Acceptance Criteria**
-
-- Transformations can be layered; child nodes are evaluated with the correct matrix composition.  
-- Bounding boxes and vertex counts remain consistent after transformations.  
-- Test coverage: evaluator unit tests, manifold integration tests, and documentation updates.
-- Complex transform chains (e.g. `translate([1,2,3]) rotate([0,90,0]) cube(5);`) render correctly.  
-- Diagnostics still point to the correct source spans.
+- `color("red") cube(10)` renders red.
+- `union() { color("red") cube(); color("blue") sphere(); }` renders parts with their respective colors (if per-face implemented) or first color (if volume-based). **Target per-face** for high fidelity.
 
 ---
 
-### Task 5.2 – Cylinder Parity (OpenSCAD-Compatible)
-
+### Task 5.4 – Offset (2D)
 **Goal**  
-Implement `cylinder()` (including cones and inverted cones) exactly like OpenSCAD’s `CylinderNode::createGeometry`, honoring `$fn`, `$fa`, `$fs`, and all parameter permutations (`h`, `r`, `r1`, `r2`, `d`, `d1`, `d2`, `center`).
+Implement `offset(r|delta, chamfer)` for 2D shapes.
 
 **Steps**
+1. **Library Selection**
+   - Use `cavalier_contours` (Rust Clipper port) for robust 2D offsetting.
 
-1. **Evaluator Support**  
-   - Extend the evaluator to parse cylinder statements into a new `GeometryNode::Cylinder { radius_bottom, radius_top, height, centered, segments, span }`.  
-   - Reuse `resolution::compute_segments` with `max(r1, r2)` so `$fn/$fa/$fs` match `CurveDiscretizer::getCircularSegmentCount`.  
-   - Validate parameters (positive height, non-negative radii, at least one non-zero radius) and emit diagnostics on failure—no silent fallbacks.
-
-2. **manifold-rs Primitive**  
-   - Create `libs/manifold-rs/src/primitives/cylinder/{mod.rs, tests.rs}` (each <500 lines, documented).  
-   - Generate vertices exactly like OpenSCAD: two circles (or single apex) at `z1/z2` depending on `center`, with fragments determined above.  
-   - Build faces for frustum, cone, and inverted cone cases, matching winding/cap order (`num_fragments - i - 1` for bottom face) so outputs are byte-for-byte compatible with upstream PolySets.  
-   - Reuse the shared half-edge builder to convert triangles/quads into a validated `Manifold`.
-
-3. **Integration & Tests**  
-   - Wire `GeometryNode::Cylinder` through `from_ir` and add regression tests verifying:  
-     1. Centered vs non-centered bounding boxes.  
-     2. `$fn` overrides fragment counts; `$fa/$fs` fallback when `$fn=0`.  
-     3. Cones/inverted cones produce the expected vertex/triangle totals (matching OpenSCAD output for sample inputs).  
-     4. Invalid parameters return explicit `ManifoldError` or evaluator diagnostics.
+2. **Implementation**
+   - Convert `CrossSection` contours to Clipper paths.
+   - Apply offset:
+     - `r`: Round join, `delta`: Miter/Square join.
+     - `chamfer`: Chamfer join.
+   - Convert back to `CrossSection`.
 
 **Acceptance Criteria**
-
-- `cylinder()` (and `cone` variants) produce meshes identical to OpenSCAD for representative `$fn/$fa/$fs` settings.  
-- Evaluator + manifold tests cover parameter parsing, centering, cone cases, and fragment math; `cargo test -p manifold-rs` passes.
+- `offset(r=1) square(10)` produces a rounded square.
+- `offset(delta=1, chamfer=true)` produces a chamfered square.
 
 ---
 
-### Task 5.3 – Polyhedron Parity (OpenSCAD-Compatible)
+## Phase 6 – Advanced CSG & Hulls
 
+### Task 6.1 – Boolean Operations
 **Goal**  
-Port OpenSCAD’s `polyhedron(points, faces, convexity)` semantics into evaluator + `manifold-rs`, matching point/face validation, winding reversal, and convexity bookkeeping.
+Implement robust `union`, `difference`, `intersection` using Manifold kernel.
 
 **Steps**
+1. **Manifold Bindings**
+   - Expose `Boolean3` operations.
+   - Ensure robust handling of coplanar faces (Manifold handles this well).
 
-1. **Evaluator & Diagnostics**  
-   - Introduce `GeometryNode::Polyhedron { points, faces, convexity, span }`.  
-   - Validate that `points` is a vector of finite triplets and `faces` is a vector of integer vectors with ≥3 entries, mirroring OpenSCAD log messages (converted into structured diagnostics).  
-   - Reject out-of-range indices and non-numeric values with clear errors; no face auto-fixes beyond what upstream does.
-
-2. **manifold-rs Primitive**  
-   - Add `libs/manifold-rs/src/primitives/polyhedron/{mod.rs, tests.rs}` responsible for:  
-     - Copying vertices, reversing face winding, and splitting polygons >3 into triangles using the same fan strategy as OpenSCAD.  
-     - Validating topology (duplicate vertex indices, degenerate faces) and returning `ManifoldError::InvalidTopology` when issues arise.  
-     - Preserving `convexity` metadata for downstream consumers.
-
-3. **Testing & Integration**  
-   - Add unit tests for simple tetrahedron, cube, and invalid face cases (too few vertices, out-of-range indices).  
-   - Extend integration tests to ensure evaluator diagnostics propagate through WASM (matching existing pipeline error flow).  
-   - Document sample `polyhedron()` snippets in tests with comments explaining expectations per project guidelines.
+2. **N-ary Operations**
+   - `union()` often takes N children. Implement incremental or parallel reduction: `union(A, B, C) -> union(union(A, B), C)`.
 
 **Acceptance Criteria**
-
-- `polyhedron()` inputs that succeed in OpenSCAD yield identical meshes/diagnostics in Rust, including winding and convexity flags.  
-- Invalid input scenarios produce explicit diagnostics identical in spirit to upstream logging.  
-- `cargo test -p manifold-rs` and evaluator/WASM suites include coverage for tetrahedron, indexed face errors, and documentation tests.
+- `difference() { cube(10); sphere(6); }` produces a cube with a spherical cutout.
+- Water-tightness verified by `Manifold::validate()`.
 
 ---
 
-## Phase 6 – Boolean Operations
-
-### Task 6.1 – Robust Predicates
-
+### Task 6.2 – Hull (Convex Hull)
 **Goal**  
-Introduce robust predicates for geometric computations.
+Implement `hull()` for 2D and 3D sets of points.
 
 **Steps**
+1. **Algorithm**
+   - Collect all vertices from all child meshes.
+   - **3D**: Use `quickhull` crate (or port `chull`) to generate the convex hull of the point cloud.
+   - **2D**: Use `graham_scan` or `monotone_chain` for 2D contours.
 
-1. **`robust` Integration**
-   - Use the `robust` crate for orientation tests (e.g. `orient3d`).
-
-2. **Replace Epsilon Checks**
-   - Audit existing predicate code (e.g. `dot > EPSILON`) and replace with robust predicates where correctness is critical.
+2. **Implementation**
+   - `hull(A, B)`: Get verts(A) + verts(B) -> Compute Hull -> New Manifold.
 
 **Acceptance Criteria**
-
-- Predicates behave correctly for nearly coplanar and nearly parallel cases in tests.
+- `hull() { cube([10,1,1]); translate([0,10,0]) cube([1,10,1]); }` produces a convex shape connecting the two bars.
 
 ---
 
-### Task 6.2 – Boolean Logic (CSG)
-
+### Task 6.3 – Minkowski Sum
 **Goal**  
-Implement robust `union`, `difference`, and `intersection` operations.
+Implement `minkowski()` sum.
 
 **Steps**
+1. **Fast Path (Convex)**
+   - If children are convex (or user assumes so), `minkowski(A, B) = hull(sum of all vertex pairs)`.
+   - Implement vertex sum: `V_new = { v_a + v_b | v_a in A, v_b in B }`.
+   - Compute Hull of `V_new`.
 
-1. **Broad Phase (Spatial Index)**
-   - Implement an R-Tree/BVH for triangle bounding boxes.  
-   - Use it to find candidate triangle pairs, using `rayon` where appropriate for parallel partitioning (and WASM threads + shared memory when available).
-
-2. **Exact Phase (Intersection)**
-   - Implement edge-plane and edge-edge intersection logic, carefully handling precision.
-
-3. **Classification & Retriangulation**
-   - Classify triangles as inside/outside relative to other manifolds.  
-   - Re-triangulate intersection regions.
-
-4. **Sanitation**
-   - Remove degenerate triangles; ensure final mesh is watertight.
+2. **General Case (Slow)**
+   - Fallback (warn user or check convexity): Union of `A` translated by every vertex of `B`.
+   - Use with caution; maybe set a limit on vertex count.
 
 **Acceptance Criteria**
+- `minkowski() { cube(10); sphere(1); }` produces a rounded cube.
 
-- Boolean examples from the test corpus produce valid manifolds.  
-- `Manifold::validate()` passes after each boolean operation.
-
----
-
-### Task 6.3 – Fuzz Testing
-
-**Goal**  
-Catch edge cases in boolean operations using property-based tests.
-
-**Steps**
-
-1. **Fuzz Harness**
-   - Use `proptest` to generate random primitives (cubes, spheres) with random transforms, favouring strategies that are SIMD-friendly where beneficial so fuzzing can exercise many cases quickly.
-
-2. **Operation Under Test**
-   - Perform `union` (and if feasible, `difference`, `intersection`) on random pairs.
-
-3. **Invariant Checks**
-   - Assert that `Manifold::validate()` always returns `true`.  
-   - Assert no panics occur.
-
-**Acceptance Criteria**
-
-- Fuzz tests run regularly in CI (or at least locally) and catch regressions in boolean logic.
 
 ---
 
