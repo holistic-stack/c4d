@@ -25,23 +25,22 @@ For each task, we list:
 
 ## Phase 0 – Pre-Bootstrap Evaluation
 
-### Task 0.1 – Confirm Geometry Kernel Strategy (Direct Port)
+### Task 0.1 – Confirm Geometry Kernel Strategy
 
 **Goal**  
-Confirm and document that `libs/manifold-rs` will be a direct port of the local C++ Manifold algorithms (index-based half-edge), not a thin wrapper around external kernels like `manifold3d` or `csgrs`.
+Confirm and document that `libs/openscad-mesh` will use best-in-class algorithms for 2D/3D mesh generation, boolean CSG, and transformations while maintaining 100% OpenSCAD API compatibility.
 
 **Steps**
 
-1. Survey `manifold/` C++ sources to outline the main data structures and algorithms to port into `libs/manifold-rs`.  
-2. Optionally review `manifold3d` Rust bindings and the `csgrs` crate **only as references** (for ideas, tests, or benchmarks), not as runtime geometry kernels.  
-3. Write a short design note describing:
-   - The chosen approach: direct port into `libs/manifold-rs` with an index-based half-edge.  
-   - Which parts of C++ Manifold are in scope for the first vertical slices.  
-   - An explicit statement that `manifold3d` and `csgrs` will not be used as runtime geometry kernels behind `libs/manifold-rs`.
+1. Research and select best-in-class algorithms for each geometry operation category (primitives, booleans, extrusions, transformations).  
+2. Write a short design note describing:
+   - The chosen approach: original Rust implementation in `libs/openscad-mesh` using best-in-class algorithms.  
+   - Which OpenSCAD features are in scope for the first vertical slices.  
+   - An explicit statement that external geometry kernels will not be used as runtime dependencies.
 
 **Acceptance Criteria**
 
-- A design note exists in the repo (e.g. `specs/pipeline/kernel-decision.md`) clearly stating that `libs/manifold-rs` is a direct C++ Manifold port and that `manifold3d`/`csgrs` are not used as interim kernels.  
+- A design note exists in the repo (e.g. `specs/pipeline/kernel-decision.md`) clearly stating `libs/openscad-mesh` strategy.  
 - `overview-plan.md` and the dependency graph remain valid for this approach.
 
 ### Task 0.2 – Confirm Tree-sitter Grammar Integration
@@ -57,19 +56,11 @@ Confirm that `libs/openscad-parser` is the canonical Tree-sitter grammar for Ope
 
 **Acceptance Criteria**
 
-- `libs/openscad-parser/src/grammar.json` is clearly documented as the canonical grammar in `overview-plan.md` and this task file.  
+- `libs/openscad-parser/src/grammar.json` is clearly documented as the canonical grammar in `overview-plan.md` and this task file.
+
+---
+
 ## Phase 1 – Infrastructure & "Tracer Bullet"
-**Task 0.2 Confirmation:**
-
-- `grammar.json` verified: rules cover primitives (e.g. `cube()` via `module_call`), transforms (`translate`/`rotate`/`scale` via `transform_chain`), booleans (`union_block`, `difference`/`intersection` via `module_call`), control flow (`for_block`/`if_block`), advanced (`module_item`/`function_item`/`include_statement`/`use_statement`).
-
-- Builds successfully: `src/parser.c` generated (implied by `bindings/rust/build.rs`), `tree_sitter/` setup present.
-
-- Rust bindings confirmed: `bindings/rust/lib.rs` exports `language()` function loading the grammar; includes `test_can_load_grammar()`.
-
-- No setup needed for Phase 1; integration ready.
-
-- Files readable; grammar.json (~2279 formatted lines) is canonical JSON data.
 
 ### Task 1.1 – Workspace & Crate Setup 
 
@@ -83,11 +74,11 @@ Initialize the Cargo workspace and core Rust crates from scratch, with proper de
      - `libs/openscad-parser`  
      - `libs/openscad-ast`  
      - `libs/openscad-eval`  
-     - `libs/manifold-rs`  
+     - `libs/openscad-mesh`  
      - `libs/wasm`  
      - `libs/openscad-lsp`  
 
-2. **Create `libs/manifold-rs`**  
+2. **Create `libs/openscad-mesh`**  
    - Create crate structure:  
      - `src/lib.rs`  
      - `src/config.rs`  
@@ -126,14 +117,6 @@ Initialize the Cargo workspace and core Rust crates from scratch, with proper de
 - `cargo build` at workspace root succeeds without errors.  
 - `cargo test` (with initial no-op tests) succeeds for all new crates.  
 - Crate dependency graph matches the architecture in `overview-plan.md` (no unexpected cycles).
-
-**Task 1.1 Status:**
-
-- Workspace members added for `config`, `libs/openscad-parser`, `libs/openscad-ast`, `libs/openscad-eval`, `libs/manifold-rs`, `libs/wasm`, and `libs/openscad-lsp`.  
-- Core crates scaffolded with SRP modules (`mod.rs` + `tests.rs`) and documented public APIs referencing centralized `config` constants.  
-- `libs/wasm` exposes a panic hook initializer and a minimal `compile_and_count_nodes` pipeline stub wired into `openscad-eval`.  
-- `openscad-lsp` provides a stdio server binary, in-memory document store, and a minimal parser stub sufficient for end-to-end testing.  
-- `cargo fmt` and `cargo test` at the workspace root both succeed.
 
 ---
 
@@ -177,17 +160,6 @@ Set up `apps/playground` with a Web Worker and Three.js scene, ready to call the
 - The worker loads the **real** `libs/wasm` bundle built via `../scripts/build-wasm.sh` and calls an exported function that returns geometry buffers (initially a trivial constant mesh such as a single triangle), with **no mocked WASM modules** in TypeScript.  
 - TypeScript compiles in strict mode with **no `any` usages**, and ESLint runs cleanly (zero lint errors).
 
-**Task 1.2 Current Status:**  
-- `apps/playground` has a SvelteKit project with a Three.js scene manager, Web Worker, and WASM wrapper implemented; the worker calls `compile_and_render` from `libs/wasm` and the scene manager builds dynamic `THREE.BufferGeometry` from the returned `MeshHandle` (vertices + indices) instead of using hard-coded primitive geometry.  
-- `pnpm check` and `pnpm build` pass.
-- Integration with `libs/wasm` via the local `scripts/build-wasm.sh` workflow is verified.
-
-**Task 2.4 Status (Partial):**
-- Mesh wrapper updated to return structured diagnostics.
-- Worker updated to use structured message protocol.
-- UI diagnostics panel implemented.
-- End-to-end flow verified via unit and integration tests in `apps/playground`.
-
 ---
 
 ### Task 1.3 – Local WASM Build Pipeline
@@ -215,11 +187,6 @@ Build `libs/wasm` (and any other `wasm32-unknown-unknown` artifacts) locally usi
 - Running `pnpm build:wasm` in `apps/playground/` builds `libs/wasm` locally using the Rust toolchain (with optional WASI SDK).  
 - Developers need a local `rustup`, `cargo`, and `wasm-bindgen` installation; Docker is no longer required for wasm builds.  
 - The generated `.wasm` and JS/TS glue files are written into a stable location that the SvelteKit/Vite build can import.
-
-**Task 1.3 Status:**
-- `scripts/build-wasm.sh` implemented.
-- `pnpm build:wasm` successfully builds `libs/wasm` locally and copies artifacts to `libs/wasm/pkg`.
-- `apps/playground` consumes these artifacts via `$wasm` alias.
 
 ---
 
@@ -269,101 +236,71 @@ Provide a parse-only and structural analysis pipeline for OpenSCAD using `libs/o
 - Given a basic OpenSCAD snippet (e.g. `cube(10);`), the server publishes either zero diagnostics or a well-formed list of syntax diagnostics.  
 - Parser integration lives only in `libs/openscad-parser` and `libs/openscad-lsp`; no other crate re-implements Tree-sitter wiring or depends on `web-tree-sitter`.
 
-**Task 1.4 Status:**
-- `libs/openscad-lsp` implemented with tower-lsp server and Tree-sitter integration.
-- **Parser SRP Refactoring Completed** (see `specs/split-parser/` for details):
-  - `libs/openscad-ast` refactored into modular architecture following SRP
-  - Created focused modules: `statement.rs`, `module_call.rs`, `transform_chain.rs`, `assignments.rs`
-  - Argument parsing split into `arguments/` submodules: `cube.rs`, `sphere.rs`, `cylinder.rs`, `shared.rs`
-  - All modules under 500 lines with comprehensive documentation and co-located tests
-  - 20 tests passing, zero regressions
-  - Public API unchanged (`parse_to_ast` remains the entry point)
-  - See `specs/split-parser/tasks.md` for complete refactoring breakdown
-
 ---
 
 ### Task 1.5 – Enforce Pipeline Boundaries 
 
 **Goal**  
-Ensure all future `libs/manifold-rs` implementations follow a consistent, mechanical C++ → Rust porting approach (index-based half-edge, `rayon` parallelism, explicit errors, robust predicates), before any primitives or boolean operations are added.
+Ensure all future `libs/openscad-mesh` implementations follow consistent patterns (safe Rust, `rayon` parallelism, explicit errors, robust predicates), before any primitives or boolean operations are added.
 
 **Steps**
 
-1. **Half-Edge Representation**  
-   - Replace raw pointers or index fields that point into C++ arrays with **index-based handles** in Rust (`u32` indices into `Vec` arenas).  
-   - Keep ownership in central arenas (e.g. `Vec<Vertex>`, `Vec<HalfEdge>`, `Vec<Face>`); pass indices between functions instead of references with complex lifetimes.
+1. **Mesh Representation**  
+   - Use safe Rust data structures for mesh storage (e.g. `Vec<Vertex>`, `Vec<Face>`).  
+   - Pass indices between functions instead of references with complex lifetimes where appropriate.
 
-2. **Parallelism (thrust/TBB → `rayon`)**  
-   - For C++ code that uses `thrust`/TBB to parallelize loops over faces/edges, map them to `par_iter()`/`par_iter_mut()` over the corresponding `Vec`s in Rust.  
+2. **Parallelism (`rayon`)**  
+   - Use `par_iter()`/`par_iter_mut()` for parallelizable operations over vertices, faces, or edges.  
    - Keep side effects confined to data local to each loop iteration, or use scoped parallelism patterns to avoid shared mutable state.
 
 3. **Memory & Safety**  
-   - Eliminate manual memory management patterns from C++ (new/delete, raw pointer arithmetic).  
+   - Use safe Rust by default; prefer owned types and standard collections.  
    - Use `unsafe` only in small, well-audited sections where performance demands it, and always expose a safe API on top.  
-   - Replace C++ `assert`/`abort` with explicit `Result`-based errors or internal debug assertions that never leak to the public API as panics.
+   - All errors surface via `Result` types; never panic in library code paths.
 
 4. **Error Handling**  
-   - Convert C++ failure paths (error codes, special values) into typed Rust errors using `thiserror`.  
-   - Ensure all public `manifold-rs` operations used by the Evaluator return `Result<Self, Error>` or similar, never relying on panics.
+   - Use typed Rust errors via `thiserror` for all failure cases.  
+   - Ensure all public `openscad-mesh` operations return `Result<Self, Error>` or similar, never relying on panics.
 
 5. **Testing Strategy**  
-   - Where possible, mirror C++ test cases/fixtures in Rust, comparing topological invariants (e.g. Euler characteristic, manifold validity) rather than relying only on exact floating-point equality.  
+   - Create comprehensive tests comparing output against OpenSCAD reference data, using topological invariants (e.g. Euler characteristic, watertight mesh) rather than relying only on exact floating-point equality.  
    - Add new tests that exercise edge cases surfaced by fuzzing and visual regression.
 
 6. **Robust Predicates Initialization**  
    - If the chosen robust predicates library requires a one-time initialization (for example an `exactinit()` call), invoke this once at WASM startup (e.g. in a Rust `init` function or lazy static) so all downstream geometry code benefits from correct predicate behaviour.
 
-**Example: Porting a Boolean Union Loop (Conceptual)**
+**Example: Boolean Union Implementation Pattern**
 
-- **C++ pattern (conceptual)**  
-  - A typical C++ Manifold boolean operation iterates over `std::vector<Halfedge>` and `std::vector<Face>` collections, sometimes in parallel using `thrust`/TBB:
-    - Build or update arrays of half-edges and faces.  
-    - For each face/edge, classify it against a plane or another mesh and mark results in-place.  
-    - Use parallel for-loops to accelerate classification and merging.
+- **Rust pattern**  
+  - Model mesh data with safe Rust structures:
+    - `vertices: Vec<Vertex>`, `faces: Vec<Face>` with appropriate indices.  
+  - Use safe Rust iteration:
+    - Sequential: `for face in &mut faces { /* classify/update */ }`.  
+    - Parallel: `faces.par_iter_mut().for_each(|face| { /* classify/update */ });` when no cross-face mutation is required.
+  - Have classification functions return explicit enums/results.  
+  - Any failure (numerical issues, invalid topology) must surface as a `Result` with a typed error.
 
-- **Rust pattern (mechanical translation)**  
-  - Model the same data as arenas in `manifold-rs`:
-    - `vertices: Vec<Vertex>`, `half_edges: Vec<HalfEdge>`, `faces: Vec<Face>` with `u32` indices connecting them.  
-    - Each face stores indices into `half_edges`, each half-edge stores indices into `vertices` and adjacent faces.
-  - Replace C++ loops with safe Rust iteration:
-    - Sequential: `for face_idx in 0..faces.len() { let face = &mut faces[face_idx]; /* classify/update */ }`.  
-    - Parallel: `faces.par_iter_mut().for_each(|face| { /* classify/update */ });` when no cross-face mutation is required (or when shared state is carefully managed).
-  - Instead of mutating global flags or using raw pointers, have classification functions return explicit enums/results and update the arenas through indices.  
-  - Any failure (numerical issues, invalid topology) must surface as a `Result` with a typed error, never as a silent assertion or abort.
+**Template: `Mesh::boolean` API**
 
-**Template: C++ `Manifold::Boolean` → Rust `Manifold::boolean`**
-
-- **C++ signature (from `manifold/src/manifold.cpp`)**  
-  - `Manifold Manifold::Boolean(const Manifold& second, OpType op) const;`
-
-- **Rust public API shape (in `libs/manifold-rs`)**  
-  - Provide a safe, explicit API instead of operator overloading:
-    - `pub fn boolean(&self, other: &Manifold, op: BooleanOp) -> Result<Manifold, BooleanError>;`  
-    - `pub fn union(&self, other: &Manifold) -> Result<Manifold, BooleanError>;`  
-    - `pub fn difference(&self, other: &Manifold) -> Result<Manifold, BooleanError>;`  
-    - `pub fn intersection(&self, other: &Manifold) -> Result<Manifold, BooleanError>;`
-  - `BooleanOp` is a small Rust enum mirroring `OpType` (`Add`, `Subtract`, `Intersect`).  
-  - `BooleanError` is a `thiserror`-based type capturing triangulation failures, invalid topology, or precision/pathological cases.
-
-- **Rust internal delegation pattern**  
-  - Keep the user-facing `Manifold` as a thin handle around an internal implementation (e.g. `struct Manifold { impl_: Arc<Impl> }`).  
-  - Implement the heavy boolean logic on an internal `Impl`/`Node` type that owns the index-based half-edge arenas.  
-  - `Manifold::boolean` should:
-    - Validate inputs (e.g. basic sanity checks, bounding boxes).  
-    - Construct an internal CSG tree node (similar to `CsgNode`/`CsgOpNode` in C++) using indices and `rayon` for parallel phases.  
-    - Execute the boolean operation, returning either a new `Impl` (wrapped in `Manifold`) or a `BooleanError`.
+- **Rust public API shape (in `libs/openscad-mesh`)**  
+  - Provide a safe, explicit API:
+    - `pub fn boolean(&self, other: &Mesh, op: BooleanOp) -> Result<Mesh, MeshError>;`  
+    - `pub fn union(&self, other: &Mesh) -> Result<Mesh, MeshError>;`  
+    - `pub fn difference(&self, other: &Mesh) -> Result<Mesh, MeshError>;`  
+    - `pub fn intersection(&self, other: &Mesh) -> Result<Mesh, MeshError>;`
+  - `BooleanOp` is a small Rust enum (`Union`, `Difference`, `Intersection`).  
+  - `MeshError` is a `thiserror`-based type capturing triangulation failures, invalid topology, or precision issues.
 
 - **Testing pattern**  
-  - Mirror the intention of `operator+`, `operator-`, `operator^` by:
-    - Adding tests for `union/difference/intersection` that validate:  
-      - Topological invariants (`validate()` passes, expected Euler characteristic).  
-      - Expected behaviour on disjoint vs overlapping bounding boxes.  
-    - Ensuring the Rust `boolean` operations never panic and always return a `Result`.
+  - Add tests for `union/difference/intersection` that validate:  
+    - Topological invariants (`validate()` passes, expected Euler characteristic).  
+    - Expected behaviour on disjoint vs overlapping bounding boxes.  
+  - Ensure the Rust `boolean` operations never panic and always return a `Result`.
 
 **Acceptance Criteria**
 
-- Code reviews for new `libs/manifold-rs` features explicitly check against these guidelines (half-edge representation, parallelism, safety, error handling, testing, robust predicates).
-- New public boolean APIs in `libs/manifold-rs` (`boolean`, `union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
+- Code reviews for new `libs/openscad-mesh` features explicitly check against these guidelines (mesh representation, parallelism, safety, error handling, testing, robust predicates).
+- New public boolean APIs in `libs/openscad-mesh` (`boolean`, `union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
 ### Task 1.6 – WASM Runtime Packaging (Tree-sitter Style)
 
 **Goal**  
@@ -394,36 +331,36 @@ Align the `libs/wasm` web distribution with Tree-sitter's `web-tree-sitter` patt
 - All build helpers (`scripts/build-wasm.sh`, `build-wasm.js`, or equivalents) are clearly documented as Node-only and are not pulled into Vite/SvelteKit client bundles.  
 - `pnpm build:wasm` (and any platform-specific variants) consistently regenerates `libs/wasm/pkg`, and `pnpm build` in `apps/playground` completes without bundler complaints about Node built-ins.  
 
-### Task 2.1 – Manifold-RS Cube Primitive (TDD)
+### Task 2.1 – Cube Primitive (TDD)
 
 **Goal**  
-Implement a robust cube primitive in `libs/manifold-rs` with TDD.
+Implement a robust cube primitive in `libs/openscad-mesh` with TDD.
 
 **Steps**
 
 1. **Test First**
-   - In `libs/manifold-rs/src/primitives/cube/tests.rs`:
+   - In `libs/openscad-mesh/src/primitives/cube/tests.rs`:
      - Add tests asserting:
        - 8 vertices and 12 triangles for a simple cube.  
        - Correct bounding box for given `size` and `center` flag.  
-       - `Manifold::validate()` passes.
+       - `Mesh::validate()` passes.
 
 2. **Implementation**
-   - In `libs/manifold-rs/src/primitives/cube/mod.rs`:
-     - Implement `pub fn cube(size: DVec3, center: bool) -> Manifold`.
-     - Use the index-based half-edge representation.
-   - Ensure cube construction relies on `Vec` arenas and u32 indices, not pointer-based structures.
+   - In `libs/openscad-mesh/src/primitives/cube/mod.rs`:
+     - Implement `pub fn cube(size: DVec3, center: bool) -> Mesh`.
+     - Use safe Rust data structures.
+   - Ensure cube construction uses standard `Vec` collections.
 
 3. **Robustness**
    - Where predicates are needed (e.g. coplanarity checks), use `robust`-style predicates from the beginning rather than ad-hoc epsilon comparisons.
 
 4. **Validation**
-   - Implement `Manifold::validate()` (if not already) to run Euler checks and topology invariants.
+   - Implement `Mesh::validate()` (if not already) to run Euler checks and topology invariants.
 
 **Acceptance Criteria**
 
-- `cargo test -p manifold-rs` passes with cube tests.
-- `Manifold::Cube` (or equivalent) produces a valid manifold for typical sizes.
+- `cargo test -p openscad-mesh` passes with cube tests.
+- `Mesh::cube` produces a valid mesh for typical sizes.
 
 ---
 
@@ -445,19 +382,19 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
          hint: Option<String>,
      }
      ```
-   - This `Diagnostic` is the canonical error type used by `libs/openscad-parser`, `libs/openscad-ast`, `libs/openscad-eval`, and `libs/manifold-rs` when reporting problems (syntax errors, unsupported primitives, evaluation issues, etc.).  
+   - This `Diagnostic` is the canonical error type used by `libs/openscad-parser`, `libs/openscad-ast`, `libs/openscad-eval`, and `libs/openscad-mesh` when reporting problems (syntax errors, unsupported primitives, evaluation issues, etc.).  
    - `libs/wasm::diagnostics` provides a WASM-compatible `Diagnostic` wrapper that implements `From<openscad_ast::Diagnostic>` and exposes `severity()`, `message()`, `start()`, `end()`, and `hint()` getters for JavaScript.  
    - Downstream consumers (the WASM boundary and the Playground) must never invent diagnostics; they always originate from this shared type.
 
 2. **Minimal `cube(10);` Pipeline Wiring**  
    - Implement a tracer-bullet path that exercises **every layer** as described in `overview-plan.md` §3.5:
      - Playground sends the source string `cube(10);` to `libs/wasm`.
-     - `libs/wasm` forwards `cube(10);` into a single entry point in `libs/manifold-rs`.
-     - `libs/manifold-rs` calls `libs/openscad-eval` with the original source string.
+     - `libs/wasm` forwards `cube(10);` into a single entry point in `libs/openscad-mesh`.
+     - `libs/openscad-mesh` calls `libs/openscad-eval` with the original source string.
      - `libs/openscad-eval` calls `libs/openscad-ast` with `cube(10);`.
      - `libs/openscad-ast` calls `libs/openscad-parser` with `cube(10);`, receives a CST, converts it to a typed AST, and returns the AST to `libs/openscad-eval`.
-     - `libs/openscad-eval` decides whether evaluation is required, evaluates and resolves the AST, and returns an evaluated/flattened AST to `libs/manifold-rs`.
-     - `libs/manifold-rs` transforms the evaluated AST into a mesh and returns it to `libs/wasm`.
+     - `libs/openscad-eval` decides whether evaluation is required, evaluates and resolves the AST, and returns an evaluated/flattened AST to `libs/openscad-mesh`.
+     - `libs/openscad-mesh` transforms the evaluated AST into a mesh and returns it to `libs/wasm`.
      - `libs/wasm` returns the mesh to the Playground as typed buffers/handles, and the Playground converts it into Three.js geometry and renders the cube.
 
 3. **WASM Interface**  
@@ -468,7 +405,7 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
        pub fn compile_and_render_internal(
            source: &str,
        ) -> Result<MeshHandle, Vec<openscad_ast::Diagnostic>> {
-           // Calls manifold-rs::from_source(source) and converts the result
+           // Calls openscad_mesh::from_source(source) and converts the result
            // into a MeshHandle on success, or returns a Vec<Diagnostic> on error.
        }
        ```
@@ -523,7 +460,7 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
        }
        ```
 
-     - Ensure `MeshHandle` carries counts and typed vertex/index buffers suitable for building a `THREE.BufferGeometry` in the Playground, so the worker can return the real manifold mesh to the renderer.  
+     - Ensure `MeshHandle` carries counts and typed vertex/index buffers suitable for building a `THREE.BufferGeometry` in the Playground, so the worker can return the real mesh to the renderer.  
      - Do **not** add string-only or fallback error paths; all pipeline failures must flow through a structured `diagnostics` array.
 
 4. **Playground Diagnostics**  
@@ -556,7 +493,7 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
 
 - Intentionally invalid OpenSCAD code produces a `Vec<Diagnostic>` with correct spans and messages in Rust, and the public `compile_and_render` binding throws a JavaScript error object of the form `{ diagnostics: Diagnostic[] }`.  
 - The worker converts this error into a `compile_error` message whose `payload` is a non-empty diagnostics array, and the Playground renders these diagnostics in a panel instead of crashing.  
-- A `cube(10);` snippet traverses the **full minimal pipeline** documented in `overview-plan.md` §3.5 (Playground → `libs/wasm` → `libs/manifold-rs` → `libs/openscad-eval` → `libs/openscad-ast` → `libs/openscad-parser` → back up to `libs/manifold-rs` → `libs/wasm` → Playground), verified by integration tests or targeted logging.
+- A `cube(10);` snippet traverses the **full minimal pipeline** documented in `overview-plan.md` §3.5 (Playground → `libs/wasm` → `libs/openscad-mesh` → `libs/openscad-eval` → `libs/openscad-ast` → `libs/openscad-parser` → back up to `libs/openscad-mesh` → `libs/wasm` → Playground), verified by integration tests or targeted logging.
 
 ---
 
@@ -624,24 +561,23 @@ Implement a robust `sphere()` primitive with resolution managed by `$fn`, `$fa`,
 
 **Steps**
 
-1. **Manifold-RS Sphere (two-phase plan)**
-   1. **Current stop-gap (icosphere)** — already implemented. Keep tests and validation in place so we have a functional primitive until parity is ready.  
-   2. **Parity target (OpenSCAD lat/long tessellation)** — Re-implement `Sphere` using the exact algorithm from upstream OpenSCAD’s [`SphereNode::createGeometry`](../openscad/src/core/primitives.cc):
-      - Port the `CurveDiscretizer` logic so `$fn/$fa/$fs` produce the same `num_fragments` and `num_rings` as C++.  
+1. **Sphere Implementation**
+   1. Implement `Sphere` using the exact algorithm from upstream OpenSCAD's [`SphereNode::createGeometry`](../openscad/src/core/primitives.cc):
+      - Use `$fn/$fa/$fs` to produce the same `num_fragments` and `num_rings` as OpenSCAD.  
       - Generate vertices via latitude/longitude rings using the `(i + 0.5) / num_rings` polar offset and mirror the pole fan ordering.  
-      - Emit quads/triangles in the same winding order before converting to our half-edge representation.  
+      - Emit quads/triangles in the same winding order.  
       - Maintain deterministic vertex ordering so downstream boolean ops and hashes match reference OpenSCAD output.  
-      - Add fixtures that compare small reference meshes (radius + resolution combos) against serialized data from upstream OpenSCAD to prove byte-for-byte compatibility.  
-   - Half-edge construction remains shared inside the module and `from_ir` maps `GeometryNode::Sphere` errors back into diagnostics.
+      - Add fixtures that compare small reference meshes (radius + resolution combos) against serialized data from upstream OpenSCAD to prove compatibility.  
+   - `from_ir` maps `GeometryNode::Sphere` errors back into diagnostics.
 
 2. **Evaluator Context**
    - `$fn`, `$fa`, `$fs` are already tracked; the new `evaluator::resolution::compute_segments` helper converts those values into fragment counts exactly as described in the OpenSCAD docs (if `$fn>0` use it, else `ceil(min(360/$fa, 2πr/$fs))` with a minimum of five).  
    - `Statement::Sphere` calls the helper so context assignments, per-call overrides, and defaults all produce deterministic `segments` passed into `GeometryNode::sphere`.
 
 3. **Tests**
-   - `libs/manifold-rs` includes regression tests for sphere validation, bounding boxes, and subdivision scaling.  
+   - `libs/openscad-mesh` includes regression tests for sphere validation, bounding boxes, and subdivision scaling.  
    - `libs/openscad-eval` contains unit tests for the resolution helper plus evaluator scenarios where `$fn`, `$fa`, `$fs` override each other.  
-   - Doc tests capture the helper’s formula for future reference.
+   - Doc tests capture the helper's formula for future reference.
 ### Task 5.1 – Transform Nodes & Application
 
 **Goal**  
@@ -653,9 +589,9 @@ Support `translate`, `rotate`, and `scale` transformations end-to-end.
    - Ensure `Statement::Translate/Rotate/Scale` wrap child nodes in `GeometryNode::Transform { matrix, child, span }`, composing glam matrices in OpenSCAD’s inside-out order (comment + example in code). Use column-vector math so `translate([tx,ty,tz]) rotate([rx,ry,rz]) cube(1);` becomes `T * R * cube`, meaning the cube is rotated first, then translated, matching [OpenSCAD Transformations Manual](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations).  
    - Add evaluator tests documenting: (a) translate-only offset affecting bounding box, (b) rotate+translate order (rotate applied before translate), (c) scale anchored at origin vs. centered geometry. Each test must include inline comments and doc examples.
 
-2. **IR + manifold bridge**  
-   - Extend `libs/manifold-rs::from_ir` with a dedicated transform applicator that multiplies vertex positions (and recomputes normals) by the evaluator-provided 4×4 matrix.  
-   - Add SRP helper (e.g., `ManifoldTransform`) with comments explaining matrix usage, plus unit tests verifying translated, rotated, and scaled cubes keep vertex/face counts and pass `validate()`.
+2. **IR + mesh bridge**  
+   - Extend `libs/openscad-mesh::from_ir` with a dedicated transform applicator that multiplies vertex positions (and recomputes normals) by the evaluator-provided 4×4 matrix.  
+   - Add SRP helper (e.g., `MeshTransform`) with comments explaining matrix usage, plus unit tests verifying translated, rotated, and scaled cubes keep vertex/face counts and pass `validate()`.
 
 3. **End-to-end tests + docs**  
    - Add integration test: `translate([10,0,0]) sphere(5);` verifying bounding box shift; add rotate/scale combos plus a compound snippet such as:
@@ -666,7 +602,7 @@ Support `translate`, `rotate`, and `scale` transformations end-to-end.
 
      Document in comments that evaluation applies scale → rotate → translate even though the code is written translate → rotate → scale.  
    - Update `specs/pipeline/overview-plan.md` and this task section with diagrams / code snippets showing matrix order, referencing OpenSCAD manual links.  
-   - Document acceptance criteria in `tasks.md`: transforms compose correctly, evaluator/manifold tests cover ordering and pivot semantics, and diagnostics stay explicit (no silent fallbacks).
+   - Document acceptance criteria in `tasks.md`: transforms compose correctly, evaluator/mesh tests cover ordering and pivot semantics, and diagnostics stay explicit (no silent fallbacks).
 
 4. **Span Propagation**
    - Ensure spans for transformed geometry still map back to originating nodes for diagnostics.
@@ -675,7 +611,7 @@ Support `translate`, `rotate`, and `scale` transformations end-to-end.
 
 - Transformations can be layered; child nodes are evaluated with the correct matrix composition.  
 - Bounding boxes and vertex counts remain consistent after transformations.  
-- Test coverage: evaluator unit tests, manifold integration tests, and documentation updates.
+- Test coverage: evaluator unit tests, mesh integration tests, and documentation updates.
 - Complex transform chains (e.g. `translate([1,2,3]) rotate([0,90,0]) cube(5);`) render correctly.  
 - Diagnostics still point to the correct source spans.
 
@@ -693,30 +629,30 @@ Implement `cylinder()` (including cones and inverted cones) exactly like OpenSCA
    - Reuse `resolution::compute_segments` with `max(r1, r2)` so `$fn/$fa/$fs` match `CurveDiscretizer::getCircularSegmentCount`.  
    - Validate parameters (positive height, non-negative radii, at least one non-zero radius) and emit diagnostics on failure—no silent fallbacks.
 
-2. **manifold-rs Primitive**  
-   - Create `libs/manifold-rs/src/primitives/cylinder/{mod.rs, tests.rs}` (each <500 lines, documented).  
+2. **openscad-mesh Primitive**  
+   - Create `libs/openscad-mesh/src/primitives/cylinder/{mod.rs, tests.rs}` (each <500 lines, documented).  
    - Generate vertices exactly like OpenSCAD: two circles (or single apex) at `z1/z2` depending on `center`, with fragments determined above.  
-   - Build faces for frustum, cone, and inverted cone cases, matching winding/cap order (`num_fragments - i - 1` for bottom face) so outputs are byte-for-byte compatible with upstream PolySets.  
-   - Reuse the shared half-edge builder to convert triangles/quads into a validated `Manifold`.
+   - Build faces for frustum, cone, and inverted cone cases, matching winding/cap order (`num_fragments - i - 1` for bottom face) so outputs are compatible with upstream OpenSCAD.  
+   - Convert triangles/quads into a validated `Mesh`.
 
 3. **Integration & Tests**  
    - Wire `GeometryNode::Cylinder` through `from_ir` and add regression tests verifying:  
      1. Centered vs non-centered bounding boxes.  
      2. `$fn` overrides fragment counts; `$fa/$fs` fallback when `$fn=0`.  
      3. Cones/inverted cones produce the expected vertex/triangle totals (matching OpenSCAD output for sample inputs).  
-     4. Invalid parameters return explicit `ManifoldError` or evaluator diagnostics.
+     4. Invalid parameters return explicit `MeshError` or evaluator diagnostics.
 
 **Acceptance Criteria**
 
 - `cylinder()` (and `cone` variants) produce meshes identical to OpenSCAD for representative `$fn/$fa/$fs` settings.  
-- Evaluator + manifold tests cover parameter parsing, centering, cone cases, and fragment math; `cargo test -p manifold-rs` passes.
+- Evaluator + mesh tests cover parameter parsing, centering, cone cases, and fragment math; `cargo test -p openscad-mesh` passes.
 
 ---
 
 ### Task 5.3 – Polyhedron Parity (OpenSCAD-Compatible)
 
 **Goal**  
-Port OpenSCAD’s `polyhedron(points, faces, convexity)` semantics into evaluator + `manifold-rs`, matching point/face validation, winding reversal, and convexity bookkeeping.
+Port OpenSCAD's `polyhedron(points, faces, convexity)` semantics into evaluator + `openscad-mesh`, matching point/face validation, winding reversal, and convexity bookkeeping.
 
 **Steps**
 
@@ -725,10 +661,10 @@ Port OpenSCAD’s `polyhedron(points, faces, convexity)` semantics into evaluato
    - Validate that `points` is a vector of finite triplets and `faces` is a vector of integer vectors with ≥3 entries, mirroring OpenSCAD log messages (converted into structured diagnostics).  
    - Reject out-of-range indices and non-numeric values with clear errors; no face auto-fixes beyond what upstream does.
 
-2. **manifold-rs Primitive**  
-   - Add `libs/manifold-rs/src/primitives/polyhedron/{mod.rs, tests.rs}` responsible for:  
+2. **openscad-mesh Primitive**  
+   - Add `libs/openscad-mesh/src/primitives/polyhedron/{mod.rs, tests.rs}` responsible for:  
      - Copying vertices, reversing face winding, and splitting polygons >3 into triangles using the same fan strategy as OpenSCAD.  
-     - Validating topology (duplicate vertex indices, degenerate faces) and returning `ManifoldError::InvalidTopology` when issues arise.  
+     - Validating topology (duplicate vertex indices, degenerate faces) and returning `MeshError::InvalidTopology` when issues arise.  
      - Preserving `convexity` metadata for downstream consumers.
 
 3. **Testing & Integration**  
@@ -740,16 +676,323 @@ Port OpenSCAD’s `polyhedron(points, faces, convexity)` semantics into evaluato
 
 - `polyhedron()` inputs that succeed in OpenSCAD yield identical meshes/diagnostics in Rust, including winding and convexity flags.  
 - Invalid input scenarios produce explicit diagnostics identical in spirit to upstream logging.  
-- `cargo test -p manifold-rs` and evaluator/WASM suites include coverage for tetrahedron, indexed face errors, and documentation tests.
+- `cargo test -p openscad-mesh` and evaluator/WASM suites include coverage for tetrahedron, indexed face errors, and documentation tests.
 
 ---
 
-## Phase 6 – Boolean Operations
+## Phase 6 – Boolean Operations & Target Validation (HIGH PRIORITY)
 
-### Task 6.1 – Robust Predicates
+> **Goal**: Complete the pipeline to render the target validation test case from `overview-plan.md §1.1`.
+> All implementations use best-in-class algorithms with OpenSCAD-compatible parameters and output.
+
+---
+
+### Task 6.0 – Target Validation Test Case Setup
 
 **Goal**  
-Introduce robust predicates for geometric computations.
+Create the integration test fixture that validates the complete pipeline against the target OpenSCAD program.
+
+**Target Program** (must render correctly):
+```openscad
+translate([-24,0,0]) {
+    union() {
+        cube(15, center=true);
+        sphere(10);
+    }
+}
+
+intersection() {
+    cube(15, center=true);
+    sphere(10);
+}
+
+translate([24,0,0]) {
+    difference() {
+        cube(15, center=true);
+        sphere(10);
+    }
+}
+```
+
+**Steps**
+
+1. **Create Test Fixture**
+   - Add `libs/openscad-mesh/src/integration/target_validation/{mod.rs, tests.rs}` (SRP structure).
+   - Store the target OpenSCAD source as a constant string.
+   - Define expected outcomes: 3 separate meshes, each passing `validate()`.
+
+2. **Pipeline Integration Test**
+   - Wire end-to-end test: Source → Parser → AST → Eval → Mesh.
+   - Assert: all three shapes produce valid, non-empty meshes.
+   - Assert: bounding boxes are positioned at x=-24, x=0, x=24 respectively.
+
+3. **WASM Integration Test**
+   - Add corresponding test in `apps/playground` that calls `compile_and_render(source)`.
+   - Verify no runtime errors; mesh buffers are non-empty.
+
+**Acceptance Criteria**
+
+- Integration test exists and documents expected behavior.
+- Test currently fails (red) until Tasks 6.1–6.4 are complete, then passes (green).
+
+---
+
+### Task 6.1 – Translate Transform
+
+**Goal**  
+Implement `translate([x,y,z])` transformation.
+
+**Steps**
+
+1. **Parser/AST (if not done)**
+   - Ensure `Statement::Translate { vector: DVec3, children: Vec<Statement>, span }` is parsed correctly.
+   - Handle block syntax: `translate([x,y,z]) { children }` and single-child: `translate([x,y,z]) child;`.
+
+2. **Evaluator (libs/openscad-eval)**
+   - Convert `Statement::Translate` into `GeometryNode::Transform { matrix: DMat4, children, span }`.
+   - Build translation matrix: `DMat4::from_translation(vector)`.
+   - Document matrix semantics in comments with examples.
+
+3. **openscad-mesh Transform Application**
+   - Create `libs/openscad-mesh/src/ops/transform/{mod.rs, tests.rs}`.
+   - Implement `pub fn translate(mesh: &Mesh, offset: DVec3) -> Result<Mesh, MeshError>`.
+   - Internally: apply translation matrix to all vertices; update bounding box.
+   - Add comprehensive doc comments with usage examples.
+
+4. **IR Bridge (from_ir)**
+   - Handle `GeometryNode::Transform` in `from_ir`: recursively evaluate children, then apply transform.
+   - Compose multiple nested transforms by matrix multiplication.
+
+5. **Tests**
+   - Unit test: `translate([10,0,0]) cube(5);` produces bounding box shifted by +10 on X.
+   - Unit test: nested transforms compose correctly.
+   - Integration test: validate against expected vertex positions.
+
+**Acceptance Criteria**
+
+- `translate([x,y,z])` works for single and multiple children.
+- Bounding box assertions pass in tests.
+- `Mesh::validate()` passes after translation.
+
+---
+
+### Task 6.1b – Rotate Transform
+
+**Goal**  
+Implement `rotate([x,y,z])` transformation.
+
+**Steps**
+
+1. **Parser/AST**
+   - Ensure `Statement::Rotate { angles: DVec3, children, span }` is parsed.
+   - Support both `rotate([x,y,z])` and `rotate(a, [vx,vy,vz])` (axis-angle) forms.
+
+2. **Evaluator**
+   - Convert to `GeometryNode::Transform { matrix: DMat4, children, span }`.
+   - Build rotation matrix using `glam` Euler angles (degrees → radians).
+   - OpenSCAD order: rotate around X, then Y, then Z.
+
+3. **openscad-mesh Implementation**
+   - Add `pub fn rotate(mesh: &Mesh, angles: DVec3) -> Result<Mesh, MeshError>`.
+   - Apply rotation matrix to all vertices and normals.
+
+4. **Tests**
+   - Test: `rotate([0,0,90]) cube(10);` rotates cube 90° around Z.
+   - Test: `rotate([90,0,0])` rotates around X axis.
+   - Test: Composed rotations follow correct order.
+
+**Acceptance Criteria**
+
+- `rotate([x,y,z])` produces correctly oriented geometry.
+- Normals are rotated along with vertices.
+- `Mesh::validate()` passes after rotation.
+
+---
+
+### Task 6.1c – Scale Transform
+
+**Goal**  
+Implement `scale([x,y,z])` transformation.
+
+**Steps**
+
+1. **Parser/AST**
+   - Ensure `Statement::Scale { factors: DVec3, children, span }` is parsed.
+   - Support scalar: `scale(2)` = `scale([2,2,2])`.
+
+2. **Evaluator**
+   - Convert to `GeometryNode::Transform { matrix: DMat4, children, span }`.
+   - Build scale matrix: `DMat4::from_scale(factors)`.
+   - Handle negative scale factors (mirror operation).
+
+3. **openscad-mesh Implementation**
+   - Add `pub fn scale(mesh: &Mesh, factors: DVec3) -> Result<Mesh, MeshError>`.
+   - Apply scale matrix to vertices.
+   - **Handle negative scales**: flip normals if any factor is negative (odd number of negative = flip winding).
+
+4. **Tests**
+   - Test: `scale([2,1,1]) cube(5);` doubles X dimension.
+   - Test: `scale(0.5)` shrinks uniformly.
+   - Test: `scale([-1,1,1])` mirrors across YZ plane.
+
+**Acceptance Criteria**
+
+- `scale([x,y,z])` correctly scales geometry.
+- Negative scales mirror correctly with proper winding.
+- `Mesh::validate()` passes after scaling.
+
+---
+
+### Task 6.2 – Union Boolean Operation
+
+**Goal**  
+Implement `union() { children }` using best-in-class boolean CSG algorithm.
+
+**Steps**
+
+1. **Parser/AST**
+   - Ensure `Statement::Union { children: Vec<Statement>, span }` is parsed from `union() { ... }` blocks.
+   - Grammar rule: `union_block` in Tree-sitter grammar.
+
+2. **Evaluator**
+   - Convert `Statement::Union` into `GeometryNode::Boolean { op: BooleanOp::Union, children, span }`.
+   - `BooleanOp` enum: `Union`, `Difference`, `Intersection`.
+
+3. **openscad-mesh Boolean Operations**
+   - Create `libs/openscad-mesh/src/ops/boolean/{mod.rs, csg.rs, tests.rs}`.
+   - Implement:
+     ```rust
+     /// Performs boolean union of two meshes.
+     /// 
+     /// # Example
+     /// ```
+     /// let result = union(&cube, &sphere)?;
+     /// assert!(result.validate());
+     /// ```
+     pub fn union(a: &Mesh, b: &Mesh) -> Result<Mesh, MeshError>;
+     
+     /// Performs boolean union of multiple meshes.
+     pub fn union_all(meshes: &[Mesh]) -> Result<Mesh, MeshError>;
+     ```
+   - Use best-in-class CSG algorithms.
+   - Handle edge cases: empty inputs, disjoint meshes, coincident faces.
+
+4. **IR Bridge**
+   - In `from_ir`, handle `GeometryNode::Boolean { op: Union, children }`:
+     - Evaluate all children to `Vec<Mesh>`.
+     - Call `union_all(children)`.
+
+5. **Tests**
+   - Test: `union() { cube(10); sphere(5); }` produces valid mesh.
+   - Test: union of disjoint shapes = both shapes preserved.
+   - Test: union of overlapping shapes = merged correctly.
+   - Test: empty union returns empty mesh or error (match OpenSCAD behavior).
+
+**Acceptance Criteria**
+
+- `union()` with 2+ children produces valid mesh.
+- No panics; all errors return `Result`.
+- Tests cover overlapping and disjoint cases.
+
+---
+
+### Task 6.3 – Difference Boolean Operation
+
+**Goal**  
+Implement `difference() { a; b; c; }` using best-in-class boolean CSG algorithm.  
+OpenSCAD semantics: `a - b - c - ...` (subtract all subsequent children from the first).
+
+**Steps**
+
+1. **Parser/AST**
+   - Ensure `Statement::Difference { children: Vec<Statement>, span }` is parsed.
+
+2. **Evaluator**
+   - Convert to `GeometryNode::Boolean { op: BooleanOp::Difference, children, span }`.
+
+3. **openscad-mesh Implementation**
+   - Add to `libs/openscad-mesh/src/ops/boolean/csg.rs`:
+     ```rust
+     /// Boolean difference: a - b.
+     /// 
+     /// # Example
+     /// ```
+     /// // Subtract sphere from cube
+     /// let result = difference(&cube, &sphere)?;
+     /// ```
+     pub fn difference(a: &Mesh, b: &Mesh) -> Result<Mesh, MeshError>;
+     
+     /// Boolean difference: first - rest[0] - rest[1] - ...
+     pub fn difference_all(meshes: &[Mesh]) -> Result<Mesh, MeshError>;
+     ```
+   - Implement by iteratively subtracting each child from the accumulated result.
+
+4. **IR Bridge**
+   - Handle `BooleanOp::Difference` in `from_ir`.
+
+5. **Tests**
+   - Test: `difference() { cube(15, center=true); sphere(10); }` creates hollow cube.
+   - Test: single child = identity (no subtraction).
+   - Test: first child empty = error or empty result.
+   - Validate mesh is watertight after difference.
+
+**Acceptance Criteria**
+
+- `difference()` correctly subtracts children from first child.
+- Output is valid mesh (watertight, correct normals).
+- Edge cases handled with explicit errors.
+
+---
+
+### Task 6.4 – Intersection Boolean Operation
+
+**Goal**  
+Implement `intersection() { children }` using best-in-class boolean CSG algorithm.
+
+**Steps**
+
+1. **Parser/AST**
+   - Ensure `Statement::Intersection { children: Vec<Statement>, span }` is parsed.
+
+2. **Evaluator**
+   - Convert to `GeometryNode::Boolean { op: BooleanOp::Intersection, children, span }`.
+
+3. **openscad-mesh Implementation**
+   - Add to `libs/openscad-mesh/src/ops/boolean/csg.rs`:
+     ```rust
+     /// Boolean intersection of two meshes.
+     /// 
+     /// # Example
+     /// ```
+     /// // Keep only overlapping volume
+     /// let result = intersection(&cube, &sphere)?;
+     /// ```
+     pub fn intersection(a: &Mesh, b: &Mesh) -> Result<Mesh, MeshError>;
+     
+     /// Boolean intersection of multiple meshes.
+     pub fn intersection_all(meshes: &[Mesh]) -> Result<Mesh, MeshError>;
+     ```
+
+4. **IR Bridge**
+   - Handle `BooleanOp::Intersection` in `from_ir`.
+
+5. **Tests**
+   - Test: `intersection() { cube(15, center=true); sphere(10); }` creates rounded cube.
+   - Test: disjoint shapes = empty mesh.
+   - Test: identical shapes = original shape.
+
+**Acceptance Criteria**
+
+- `intersection()` correctly computes shared volume.
+- Empty intersection returns empty mesh (not error).
+- Valid mesh output in all cases.
+
+---
+
+### Task 6.5 – Robust Predicates
+
+**Goal**  
+Introduce robust predicates for geometric computations used by boolean operations.
 
 **Steps**
 
@@ -759,28 +1002,33 @@ Introduce robust predicates for geometric computations.
 2. **Replace Epsilon Checks**
    - Audit existing predicate code (e.g. `dot > EPSILON`) and replace with robust predicates where correctness is critical.
 
+3. **Initialization**
+   - If `robust` requires initialization, call once at WASM startup.
+
 **Acceptance Criteria**
 
 - Predicates behave correctly for nearly coplanar and nearly parallel cases in tests.
 
 ---
 
-### Task 6.2 – Boolean Logic (CSG)
+### Task 6.6 – Boolean Operations Core (CSG Algorithm)
 
 **Goal**  
-Implement robust `union`, `difference`, and `intersection` operations.
+Implement the core CSG algorithm powering union/difference/intersection.
 
 **Steps**
 
 1. **Broad Phase (Spatial Index)**
-   - Implement an R-Tree/BVH for triangle bounding boxes.  
-   - Use it to find candidate triangle pairs, using `rayon` where appropriate for parallel partitioning (and WASM threads + shared memory when available).
+   - Implement an R-Tree/BVH for triangle bounding boxes in `libs/openscad-mesh/src/ops/boolean/spatial.rs`.
+   - Use it to find candidate triangle pairs.
+   - Use `rayon` for parallel partitioning where appropriate.
 
 2. **Exact Phase (Intersection)**
-   - Implement edge-plane and edge-edge intersection logic, carefully handling precision.
+   - Implement edge-plane and edge-edge intersection logic in `libs/openscad-mesh/src/ops/boolean/intersect.rs`.
+   - Use robust predicates for precision.
 
 3. **Classification & Retriangulation**
-   - Classify triangles as inside/outside relative to other manifolds.  
+   - Classify triangles as inside/outside relative to other meshes.
    - Re-triangulate intersection regions.
 
 4. **Sanitation**
@@ -788,12 +1036,39 @@ Implement robust `union`, `difference`, and `intersection` operations.
 
 **Acceptance Criteria**
 
-- Boolean examples from the test corpus produce valid manifolds.  
-- `Manifold::validate()` passes after each boolean operation.
+- Boolean examples from the test corpus produce valid meshes.
+- `Mesh::validate()` passes after each boolean operation.
 
 ---
 
-### Task 6.3 – Fuzz Testing
+### Task 6.7 – End-to-End Target Validation
+
+**Goal**  
+Verify the complete target validation test case passes.
+
+**Steps**
+
+1. **Run Target Test**
+   - Execute the integration test from Task 6.0.
+   - All assertions must pass.
+
+2. **Visual Verification**
+   - Render in Playground and compare with OpenSCAD reference.
+   - Three shapes visible: union (left), intersection (center), difference (right).
+
+3. **Performance Baseline**
+   - Record compile time for future optimization reference.
+   - Note: Skip optimization for now per project guidelines.
+
+**Acceptance Criteria**
+
+- Target validation test passes (green).
+- Visual output matches OpenSCAD reference.
+- No runtime errors in browser.
+
+---
+
+### Task 6.8 – Fuzz Testing
 
 **Goal**  
 Catch edge cases in boolean operations using property-based tests.
@@ -801,13 +1076,13 @@ Catch edge cases in boolean operations using property-based tests.
 **Steps**
 
 1. **Fuzz Harness**
-   - Use `proptest` to generate random primitives (cubes, spheres) with random transforms, favouring strategies that are SIMD-friendly where beneficial so fuzzing can exercise many cases quickly.
+   - Use `proptest` to generate random primitives (cubes, spheres) with random transforms.
 
 2. **Operation Under Test**
-   - Perform `union` (and if feasible, `difference`, `intersection`) on random pairs.
+   - Perform `union`, `difference`, `intersection` on random pairs.
 
 3. **Invariant Checks**
-   - Assert that `Manifold::validate()` always returns `true`.  
+   - Assert that `Mesh::validate()` always returns `true`.
    - Assert no panics occur.
 
 **Acceptance Criteria**
