@@ -1,0 +1,11 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition.workspace = true
+description = "Centralized configuration constants for the OpenSCAD pipeline"
+license = "MIT"
+
+[dependencies]
+# No external dependencies - pure configuration constants
+
+[dev-dependencies]

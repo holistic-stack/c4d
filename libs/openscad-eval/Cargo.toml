@@ -1,0 +1,19 @@
+[package]
+name = "openscad-eval"
+version = "0.1.0"
+edition.workspace = true
+description = "Evaluator for OpenSCAD AST, produces Geometry IR"
+license = "MIT"
+
+[features]
+default = ["native-parser"]
+native-parser = ["openscad-ast/native-parser"]
+
+[dependencies]
+config = { path = "../../config" }
+openscad-ast = { path = "../openscad-ast", default-features = false }
+glam.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json = "1.0"

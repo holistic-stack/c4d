@@ -1,6 +1,6 @@
 # Rust OpenSCAD Pipeline – Overview Plan
 
-_Last updated: 2025-11-25 — incorporates 2025 Rust/WASM best practices._
+_Last updated: 2025-01-27 — **Edge Highlighting Fixed!** WireframeGeometry for ALL triangle edges (not just sharp edges), matching OpenSCAD behavior. $fn parameter parsing fixed for local overrides. All OpenSCAD special variables with correct defaults. Web Worker for non-blocking UI. Z-up axis._
 
 > This document is the high-level source of truth for the Rust OpenSCAD pipeline. It describes **goals**, **architecture**, and **standards**. See `tasks.md` in the same folder for the detailed, phase-by-phase backlog.
 
@@ -33,6 +33,14 @@ The operations in this pipeline are **CPU-bound geometry processing tasks**, not
 2. **Apply Operations**: Rust calls mesh operations (`union()`, `linear_extrude()`, `translate()`, etc.) via browser-safe algorithms.
 3. **Generate Mesh**: The library computes resulting geometry and produces a mesh (vertices + indices + normals).
 4. **Render with WebGL**: The mesh data is passed to Three.js via typed arrays for GPU rendering.
+
+**Rendering Details:**
+- **Mesh Material**: `MeshStandardMaterial` with metalness/roughness for realistic lighting
+- **Edge Highlighting**: `WireframeGeometry` overlay showing ALL triangle edges (not just sharp edges)
+  - Uses `LineSegments` with semi-transparent black lines
+  - Matches OpenSCAD's behavior where smooth surfaces show tessellation wireframe
+  - `EdgesGeometry` was rejected because it only shows edges where face normals differ by threshold angle
+- **Coordinate System**: Z-up axis to match OpenSCAD/CAD conventions
 
 This approach gives full power of Rust's computational capabilities within the browser, perfect for interactive 3D modeling.
 

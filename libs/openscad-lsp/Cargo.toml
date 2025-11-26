@@ -1,0 +1,15 @@
+[package]
+name = "openscad-lsp"
+version = "0.1.0"
+edition.workspace = true
+description = "Language Server Protocol implementation for OpenSCAD"
+license = "MIT"
+
+[dependencies]
+tree-sitter-openscad-parser = { path = "../openscad-parser" }
+tree-sitter.workspace = true
+tower-lsp.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]

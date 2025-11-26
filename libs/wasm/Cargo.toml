@@ -1,0 +1,26 @@
+[package]
+name = "openscad-wasm"
+version = "0.1.0"
+edition.workspace = true
+description = "WASM bindings for the OpenSCAD pipeline"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+config = { path = "../../config" }
+openscad-mesh = { path = "../openscad-mesh", default-features = false }
+openscad-eval = { path = "../openscad-eval", default-features = false }
+openscad-ast = { path = "../openscad-ast", default-features = false }
+wasm-bindgen.workspace = true
+console_error_panic_hook = { workspace = true, optional = true }
+js-sys = "0.3"
+serde_json = "1.0"
+web-sys = { version = "0.3", features = ["console"] }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[features]
+default = ["console_error_panic_hook"]

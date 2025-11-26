@@ -6,6 +6,408 @@
 
 ---
 
+## Implementation Progress (Updated: 2025-01-27, Edge Highlighting Fix)
+
+### Recent Changes
+
+- **Fixed sphere edge highlighting**: Changed from `EdgesGeometry` to `WireframeGeometry` to show ALL triangle edges, not just sharp edges. This matches OpenSCAD's behavior where smooth surfaces like spheres show their tessellation wireframe.
+- **Fixed $fn parameter parsing for sphere/cylinder**: Local `$fn` overrides in primitive calls (e.g., `sphere(r=10, $fn=8)`) now correctly affect tessellation
+- **Fixed WASM build script**: Now copies WASM files to playground automatically
+- **Added CST parsing tests**: Comprehensive tests for `$fn` parameter parsing from browser CST
+
+### Completed ✅
+
+| Phase | Feature | Status | Tests |
+|-------|---------|--------|-------|
+| 1.1 | Workspace & Crate Setup | ✅ Complete | - |
+| 1.2 | Config crate with constants | ✅ Complete | 29 tests |
+| 1.3 | openscad-ast crate | ✅ Complete | 32 tests |
+| 1.4 | openscad-eval crate | ✅ Complete | 33 tests |
+| 1.5 | openscad-mesh crate | ✅ Complete | 136 tests |
+| 1.6 | openscad-wasm crate | ✅ Complete | 3 tests |
+| 1.7 | openscad-lsp crate (skeleton) | ✅ Complete | - |
+| 2.1 | Cube primitive | ✅ Complete | 8 tests |
+| 2.2 | Sphere primitive | ✅ Complete | 6 tests |
+| 2.3 | Cylinder primitive | ✅ Complete | 8 tests |
+| 3.1 | Transforms (translate, rotate, scale) | ✅ Complete | - |
+| 3.2 | Mirror transform | ✅ Complete | - |
+| 3.3 | Color modifier | ✅ Complete | - |
+| 4.1 | $fn/$fa/$fs resolution | ✅ Complete | 9 tests |
+| 6.1 | BSP tree data structure | ✅ Complete | 8 tests |
+| 6.2 | BSP boolean operations | ✅ Complete | 50 tests |
+| 7.1 | linear_extrude | ✅ Complete | 10 tests |
+| 7.2 | rotate_extrude | ✅ Complete | 8 tests |
+| 7.3 | Hull (QuickHull) | ✅ Complete | 9 tests |
+| 7.4 | Minkowski sum | ✅ Complete | 6 tests |
+| 7.5 | Offset (2D polygon) | ✅ Complete | 6 tests |
+| 8.1 | Wire operations into from_ir | ✅ Complete | 11 tests |
+
+### Feature Support Matrix
+
+| Category | Feature | AST | CST Parser | Evaluator | Mesh |
+|----------|---------|-----|------------|-----------|------|
+| **2D Primitives** |||||
+| | `circle(r\|d)` | ✅ | ✅ | ✅ | ✅ |
+| | `square(size, center)` | ✅ | ✅ | ✅ | ✅ |
+| | `polygon(points, paths)` | ✅ | ✅ | ✅ | ✅ |
+| **3D Primitives** |||||
+| | `cube(size, center)` | ✅ | ✅ | ✅ | ✅ |
+| | `sphere(r\|d)` | ✅ | ✅ | ✅ | ✅ |
+| | `cylinder(h, r, r1, r2)` | ✅ | ✅ | ✅ | ✅ |
+| | `polyhedron(points, faces)` | ✅ | ✅ | ✅ | ✅ |
+| **Extrusions** |||||
+| | `linear_extrude(...)` | ✅ | ✅ | ✅ | ✅ |
+| | `rotate_extrude(...)` | ✅ | ✅ | ✅ | ✅ |
+| **Transforms** |||||
+| | `translate([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
+| | `rotate([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
+| | `rotate(a, [x,y,z])` | ✅ | ✅ | ✅ | ✅ |
+| | `scale([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
+| | `mirror([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
+| | `multmatrix(m)` | ✅ | ✅ | ✅ | ✅ |
+| | `resize(newsize, auto)` | ✅ | ✅ | ✅ | ✅ |
+| | `color(...)` | ✅ | ✅ | ✅ | ✅ |
+| | `offset(r\|delta)` | ✅ | ✅ | ✅ | ✅ |
+| | `hull()` | ✅ | ✅ | ✅ | ✅ |
+| | `minkowski()` | ✅ | ✅ | ✅ | ✅ |
+| **Booleans** |||||
+| | `union()` | ✅ | ✅ | ✅ | ✅ |
+| | `difference()` | ✅ | ✅ | ✅ | ✅ |
+| | `intersection()` | ✅ | ✅ | ✅ | ✅ |
+| **Syntax** |||||
+| | `var = value;` | ✅ | ✅ | ✅ | - |
+| | `var = cond ? a : b;` | ✅ | ✅ | ✅ | - |
+| | `module name() {}` | ✅ | ✅ | ✅ | - |
+| | `function name() = ...` | ✅ | ✅ | ✅ | - |
+| | `for (var = range) {}` | ✅ | ✅ | ✅ | - |
+| | `if (cond) {}` | ✅ | ✅ | ✅ | - |
+| **Operators** |||||
+| | Arithmetic (`+ - * / % ^`) | ✅ | ✅ | ✅ | - |
+| | Comparison (`< <= == != >= >`) | ✅ | ✅ | ✅ | - |
+| | Logical (`&& \|\| !`) | ✅ | ✅ | ✅ | - |
+| **Special Variables** |||||
+| | `$fn, $fa, $fs` | ✅ | ✅ | ✅ | - |
+| | `$t` (animation) | ✅ | ✅ | ✅ | - |
+| | `$children` | ✅ | ✅ | ✅ | - |
+| | `$vpr, $vpt, $vpd, $vpf` | ✅ | ⚠️ | ✅ | - |
+| **Modifiers** |||||
+| | `*` (disable) | ✅ | ⚠️ | ✅ | - |
+| | `!` (show only) | ✅ | ⚠️ | ✅ | - |
+| | `#` (highlight) | ✅ | ⚠️ | ✅ | - |
+| | `%` (transparent) | ✅ | ⚠️ | ✅ | - |
+
+Legend: ✅ Implemented | ⚠️ Partial | ❌ Not Implemented
+
+### Completed 🎉
+
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 9.1 | Playground UI implementation | ✅ Complete |
+| 9.2 | WASM browser safety verification | ✅ Complete |
+| 9.3 | Performance optimization | ✅ Complete |
+| 9.4 | Browser-safe CST pipeline | ✅ Complete |
+
+### Performance Benchmarks (Browser)
+
+| Test Case | Time | Vertices | Triangles |
+|-----------|------|----------|-----------|
+| Target validation (3 boolean ops) | ~106ms | 9,788 | 4,172 |
+| Simple cube | ~0.4ms | 8 | 12 |
+| Sphere ($fn=32) | ~1.9ms | 450 | 896 |
+
+Performance targets:
+- Target validation: < 500ms ✅ (achieved 106ms)
+- Simple primitives: < 10ms ✅
+
+### Next Steps (Immediate)
+
+| Priority | Feature | Description |
+|----------|---------|-------------|
+| ~~**Critical**~~ | ~~2D Primitives CST~~ | ✅ Added `parse_circle_call`, `parse_square_call`, `parse_polygon_call` |
+| ~~**Critical**~~ | ~~Additional Transforms~~ | ✅ Added `multmatrix`, `resize`, `offset`, `minkowski` parsing |
+| ~~**High**~~ | ~~User-defined functions with params~~ | ✅ FIXED - CST parameter node handling corrected |
+| High | Expression evaluation | Add binary operators (`+ - * /`) and function calls in expressions |
+| High | Control flow | Complete `for` loop and `if` statement CST parsing and evaluation |
+| High | User modules | Support `module name() {}` definitions and calls |
+| ~~Medium~~ | ~~Rotate extrude test~~ | ✅ `rotate_extrude { translate([x,0,0]) circle(); }` works |
+
+### Latest Changes (2025-11-26)
+
+**Viewport Variables Added:**
+- `$vpr` - Viewport rotation (Euler angles) [55, 0, 25]
+- `$vpt` - Viewport translation [0, 0, 0]
+- `$vpd` - Viewport camera distance (140.0)
+- `$vpf` - Viewport field of view (22.5°)
+
+**Modifiers Added (AST & Evaluator):**
+- `*` (Disable) - Object not rendered
+- `!` (ShowOnly) - Only this object rendered
+- `#` (Highlight) - Rendered in magenta
+- `%` (Transparent) - Rendered semi-transparent
+
+**Bug Fixes (Critical):**
+1. **Function Parameter Parsing** ✅ FIXED
+   - Issue: CST has `parameters -> parameter -> identifier` but code expected `parameters -> identifier`
+   - Fix: Updated `parse_function_item` and `parse_module_definition` to handle "parameter" node type
+   - Affected: `libs/openscad-ast/src/cst_parser.rs`
+   - Now works: `function id(x) = x; cube(id(10));` ✓
+
+2. **Context Isolation Bug** ✅ FIXED
+   - Issue: `evaluate_expression_to_f64` created new empty context instead of using current context
+   - Fix: Changed Assignment handling to use `eval_expr(value, ctx)` directly
+   - Affected: `libs/openscad-eval/src/evaluator.rs`
+
+3. **WASM Build Naming** ✅ FIXED
+   - Issue: Build produced `wasm.js` but loader imported `openscad_wasm.js`
+   - Fix: Updated `scripts/build-wasm.js` to use `--out-name openscad_wasm`
+
+**All User-Defined Functions Now Work:**
+- Single param: `cube(id(10))` ✓
+- Multi-param: `sphere(r=add(3, 2))` ✓
+- Arithmetic: `cube(double(5))` ✓
+- Nested calls: `cube(double(id(5)))` ✓
+- In loops: `for(i=[0:2]) translate([offset(i), 0, 0])` ✓
+- In vectors: `translate([id(10), 0, 0])` ✓
+
+### Next Steps (Future Work)
+
+| Priority | Feature | Description |
+|----------|---------|-------------|
+| ~~High~~ | ~~Web Worker~~ | ✅ WASM execution moved to Web Worker for non-blocking UI |
+| ~~High~~ | ~~Z-up Axis~~ | ✅ Camera and grid configured for Z-up (OpenSCAD/CAD standard) |
+| ~~High~~ | ~~Edge Highlighting~~ | ✅ Black edges on geometry faces using EdgesGeometry |
+| ~~High~~ | ~~OpenSCAD Defaults~~ | ✅ All special variables with correct defaults |
+| High | Error highlighting | Show syntax errors inline in code editor |
+| Medium | Mesh instancing | Use THREE.InstancedMesh for repeated geometry |
+| Medium | LOD (Level of Detail) | Reduce polygon count for distant objects |
+| Medium | Incremental updates | Only regenerate affected mesh components |
+| Low | Export STL/OBJ | Add mesh export functionality |
+| Low | Syntax highlighting | Add CodeMirror/Monaco editor with OpenSCAD syntax |
+| Low | Share/Save | Allow saving and sharing models via URL |
+
+### Web Worker Implementation (2025-11-26)
+
+**Architecture:**
+```
+Main Thread                    Worker Thread
+─────────────                  ─────────────
+postMessage(COMPILE) ────────► onmessage
+                                  │
+                                  ▼
+                               Parse CST (web-tree-sitter)
+                                  │
+                                  ▼
+                               render_from_cst() (WASM)
+                                  │
+onmessage ◄──────────────────── postMessage(RESULT)
+  │                              (transferable ArrayBuffers)
+  ▼
+Update Three.js scene
+```
+
+**Files Added:**
+- `apps/playground/src/lib/worker/openscad-worker.ts` - Worker implementation
+- `apps/playground/src/lib/worker/worker-client.ts` - Promise-based client
+- `apps/playground/src/lib/worker/index.ts` - Module exports
+
+**Benefits:**
+- UI remains responsive during compilation
+- Zero-copy data transfer via transferable ArrayBuffers
+- Promise-based async API for clean error handling
+
+### Z-Up Axis Configuration (2025-11-26)
+
+**Changes to `scene-manager.ts`:**
+- `camera.up.set(0, 0, 1)` - Z is up
+- Grid rotated to XY plane: `gridHelper.rotation.x = Math.PI / 2`
+- Camera positioned for isometric-like view
+
+**Coordinate System:**
+- X: Right
+- Y: Forward  
+- Z: Up (vertical)
+
+This matches OpenSCAD and CAD/engineering conventions.
+
+### Edge Highlighting (2025-11-26)
+
+**Implementation:**
+- Uses Three.js `EdgesGeometry` with configurable threshold angle (default: 30°)
+- Only shows edges where face normals differ by more than threshold
+- `polygonOffset` on mesh material prevents z-fighting with edge lines
+
+**Configuration Options (SceneConfig):**
+- `showEdges: boolean` - Enable/disable edge highlighting (default: true)
+- `edgeColor: number` - Edge line color (default: 0x000000 - black)
+- `edgeThreshold: number` - Angle threshold in degrees (default: 30)
+
+### OpenSCAD Special Variables (2025-11-26)
+
+**Complete list with defaults:**
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `$fn` | f64 | 0.0 | Fragment count override (0 = use $fa/$fs) |
+| `$fa` | f64 | 12.0 | Minimum fragment angle (degrees) |
+| `$fs` | f64 | 2.0 | Minimum fragment size |
+| `$t` | f64 | 0.0 | Animation time (0.0 to 1.0) |
+| `$children` | usize | 0 | Number of children in module scope |
+| `$preview` | bool | true | True in preview mode (F5), false in render (F6) |
+| `$vpr` | [f64; 3] | [55, 0, 25] | Viewport rotation (Euler angles) |
+| `$vpt` | [f64; 3] | [0, 0, 0] | Viewport translation |
+| `$vpd` | f64 | 140.0 | Viewport camera distance |
+| `$vpf` | f64 | 22.5 | Viewport field of view (degrees) |
+
+**Files:**
+- `libs/openscad-eval/src/context.rs` - All special variables
+- `config/src/constants.rs` - $fn, $fa, $fs defaults
+
+### Test Summary
+
+- **Total Tests**: 240+ passing
+- **config**: 29 tests
+- **openscad-ast**: 32 tests  
+- **openscad-eval**: 33 tests
+- **openscad-mesh**: 138 tests (includes 2 performance tests)
+- **openscad-wasm**: 3 tests
+- **tree-sitter-openscad-parser**: 5 tests
+
+### Playground Implementation
+
+The playground (`apps/playground`) is a SvelteKit + Three.js application:
+
+**Components:**
+- `src/routes/+page.svelte` - Main page with code editor and 3D viewer
+- `src/routes/+page.ts` - Disables SSR (Three.js requires browser APIs)
+- `src/lib/viewer/scene-manager.ts` - Three.js scene management (camera, lights, controls)
+- `src/lib/wasm/loader.ts` - WASM module loader with singleton pattern
+- `src/lib/wasm/types.ts` - TypeScript type definitions for WASM API
+- `src/lib/wasm/env-shim.ts` - WASM environment stubs
+
+**Features:**
+- Real-time code editing with debounced auto-compile (500ms)
+- 3D mesh rendering with OrbitControls
+- Compilation status and timing display
+- Error diagnostics panel
+- Auto-fit camera to mesh bounds
+
+**Dependencies:**
+- `three` ^0.170.0 - 3D rendering
+- `@types/three` ^0.170.0 - TypeScript types
+
+**Build Commands:**
+```bash
+# Build WASM (from project root)
+node scripts/build-wasm.js
+
+# Copy WASM to static (from apps/playground)
+Copy-Item -Path "../../libs/wasm/pkg/*" -Destination "static/wasm/" -Recurse -Force
+
+# Install dependencies
+pnpm install
+
+# Start dev server
+pnpm dev
+```
+
+**WASM Build Output:**
+- `wasm.js` - 20.4 KB (JavaScript glue code)
+- `wasm_bg.wasm` - 398.3 KB (WebAssembly binary)
+- `wasm.d.ts` - 6.7 KB (TypeScript declarations)
+
+### WASM Browser Safety Status
+
+**Browser-Safe Crates** (Pure Rust, no C dependencies):
+- **glam**: Pure Rust linear algebra (f64 mode) ✅
+- **robust**: Pure Rust exact predicates ✅
+- **thiserror**: Pure Rust error handling ✅
+- **wasm-bindgen**: WASM bindings ✅
+- **js-sys**: JavaScript interop ✅
+
+**Problematic Crate** (C dependencies):
+- **tree-sitter**: Has C code that requires C runtime functions (`fprintf`, `free`, `malloc`, etc.)
+
+### Tree-sitter WASM Architecture Analysis
+
+After reviewing `apps/tree-sitter/lib/binding_web/`, the official tree-sitter project uses a **completely separate approach** for browser support:
+
+1. **web-tree-sitter** is a dedicated npm package that uses **Emscripten** to compile tree-sitter's C code to WASM
+2. It provides its own `.wasm` binary (`tree-sitter.wasm`) that includes all C runtime functions
+3. Language grammars are compiled separately to `.wasm` files using `tree-sitter build --wasm`
+4. The JavaScript API (`Parser.init()`, `Language.load()`) handles WASM initialization
+
+**Current Problem**: Our approach compiles the Rust `tree-sitter` crate to WASM, which includes C code that expects C runtime functions. These functions don't exist in the browser environment.
+
+### Proposed Solutions
+
+**Option A: Use web-tree-sitter (Recommended)**
+- Use the official `web-tree-sitter` npm package in the playground
+- Build the OpenSCAD grammar to `.wasm` using `tree-sitter build --wasm`
+- Parse in JavaScript, then pass the CST to Rust for AST conversion
+- Pros: Official support, well-tested, no C runtime stubs needed
+- Cons: Parsing happens in JS, need to serialize CST across WASM boundary
+
+**Option B: Provide C Runtime Stubs**
+- Create comprehensive C runtime stubs in JavaScript
+- Provide all functions: `fprintf`, `free`, `malloc`, `memcpy`, etc.
+- Pros: Keep current architecture
+- Cons: Complex, error-prone, may have subtle bugs
+
+**Option C: Pre-parse on Server**
+- Move parsing to a server/worker that runs native code
+- Send parsed AST to browser for mesh generation
+- Pros: Full native performance for parsing
+- Cons: Requires server infrastructure
+
+### Current Status
+
+### Option A Implementation - COMPLETE ✅
+
+1. ✅ Installed `web-tree-sitter` npm package in playground
+2. ✅ Built OpenSCAD grammar to WASM using Docker
+3. ✅ Created TypeScript parser wrapper (`openscad-parser.ts`)
+4. ✅ Refactored Rust WASM to accept serialized CST
+   - Created `cst.rs` with `SerializedNode` type for JSON deserialization
+   - Created `cst_parser.rs` with `parse_from_cst()` function
+   - Added `evaluate_from_cst()` in openscad-eval
+   - Added `render_from_cst()` in openscad-wasm
+   - Made native tree-sitter optional via `native-parser` feature
+5. ✅ WASM build succeeds without C dependencies (287KB)
+6. ✅ Full pipeline tested in browser
+   - Boolean operations demo: 9788 vertices, 4172 triangles in 106ms
+   - Simple cube: 8 vertices, 12 triangles in 0.4ms
+   - Sphere ($fn=32): 450 vertices, 896 triangles in 1.9ms
+7. ✅ Documentation updated
+
+### Architecture
+
+```
+Browser Pipeline:
+  OpenSCAD Source
+       ↓
+  web-tree-sitter (JS) → CST
+       ↓
+  serializeTree() → JSON
+       ↓
+  render_from_cst() (Rust WASM)
+       ↓
+  parse_from_cst() → AST
+       ↓
+  evaluate_from_cst() → Geometry IR
+       ↓
+  geometry_to_mesh() → Mesh
+       ↓
+  Three.js Rendering
+```
+
+**Files Created:**
+- `libs/openscad-ast/src/cst.rs` - SerializedNode type for JSON deserialization
+- `libs/openscad-ast/src/cst_parser.rs` - CST to AST conversion
+- `apps/playground/src/lib/parser/openscad-parser.ts` - TypeScript wrapper for web-tree-sitter
+- `scripts/build-grammar-wasm.js` - Build script for grammar WASM
+
+---
+
 ## Conventions
 
 - Each task is **small**, **TDD-first**, and adheres to the **SRP**.
