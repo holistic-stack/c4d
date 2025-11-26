@@ -1,6 +1,6 @@
 # Rust OpenSCAD Pipeline – Overview Plan
 
-_Last updated: 2025-11-18 — incorporates 2025 Rust/WASM best practices._
+_Last updated: 2025-11-25 — incorporates 2025 Rust/WASM best practices._
 
 > This document is the high-level source of truth for the Rust OpenSCAD pipeline. It describes **goals**, **architecture**, and **standards**. See `tasks.md` in the same folder for the detailed, phase-by-phase backlog.
 
@@ -13,11 +13,28 @@ Create a complete, robust, and performant **OpenSCAD-to-3D-Mesh pipeline** in Ru
 The system must:
 
 - **Support real-time compilation** for interactive editing.
-- **Run fully in the browser** via WASM.
+- **Run fully in the browser** via WASM (browser-safe Rust crates and code only).
 - **Avoid unnecessary copies** between WASM and JS (zero-copy mesh transfer).
 - **Provide precise source mapping** from errors and geometry back to OpenSCAD source.
-- **100% OpenSCAD API Compatibility**: Public API mirrors OpenSCAD expectations (parameters, output shapes) while internally using best-in-class 3D/2D algorithms for superior performance.
-- **Algorithm-Optimized Backend**: All geometry operations use modern, high-performance algorithms for mesh generation, boolean CSG, and transformations—prioritizing correctness and performance over naive implementations.
+- **100% OpenSCAD API Compatibility**: Public API mirrors OpenSCAD expectations (parameters, output shapes) using best-in-class 3D/2D algorithms for mesh generation and operations.
+- **Best Algorithms for Mesh Operations**: Use proven, browser-safe algorithms (BSP trees for CSG, ear clipping for triangulation, etc.) that deliver correct results with OpenSCAD-compatible output.
+
+### 1.0.1 CPU vs GPU Processing Model
+
+The operations in this pipeline are **CPU-bound geometry processing tasks**, not native GPU-bound rendering tasks:
+
+| Layer | Role | Technology |
+|-------|------|------------|
+| **Rust (via WASM)** | Heavy geometry processing: calculating new mesh vertices, normals, indices for operations like `union()`, `linear_extrude()`, `hull()`, etc. | `openscad-mesh` crate with browser-safe algorithms |
+| **WebGL** | Efficient rendering: displaying the generated mesh data in the browser's `<canvas>` element | Three.js + `BufferGeometry` |
+
+**Workflow:**
+1. **Define Shapes**: Rust code in `openscad-mesh` defines 2D/3D primitives from the evaluated AST.
+2. **Apply Operations**: Rust calls mesh operations (`union()`, `linear_extrude()`, `translate()`, etc.) via browser-safe algorithms.
+3. **Generate Mesh**: The library computes resulting geometry and produces a mesh (vertices + indices + normals).
+4. **Render with WebGL**: The mesh data is passed to Three.js via typed arrays for GPU rendering.
+
+This approach gives full power of Rust's computational capabilities within the browser, perfect for interactive 3D modeling.
 
 All development must be broken down into **small, test-driven steps** that a developer can execute without needing external resources.
 
@@ -59,7 +76,7 @@ This test validates:
 - **Vertical Slices**  
   Implement one feature at a time through the *entire* pipeline:
   
-  `Playground UI -> Worker -> WASM -> Parser -> AST -> Evaluator -> Mesh Kernel -> Mesh -> UI`
+  `Playground UI -> Worker -> WASM -> openscad-mesh -> openscad-eval -> openscad-ast -> openscad-parser -> back up -> Mesh -> UI`
 
 - **SRP & Structure**  
   Every *single-responsibility unit* (feature/struct/module) must live in its own folder with:
@@ -121,50 +138,87 @@ This test validates:
 
 ## 3. Architecture & Data Flow
 
-High-level pipeline:
+### 3.0 Simplified Pipeline Overview
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SIMPLIFIED PIPELINE                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  playground ──► wasm ──► openscad-mesh ──► openscad-eval ──► openscad-ast  │
+│                                                       │              │      │
+│                                                       │              ▼      │
+│                                               openscad-parser ◄──────┘      │
+│                                                       │                     │
+│  playground ◄── wasm ◄── openscad-mesh ◄─────────────┘                     │
+│      │                         │                                            │
+│      ▼                         │                                            │
+│  Three.js                   Mesh                                            │
+│  BufferGeometry            Buffers                                          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Example: `cube(10);` flow:**
+1. **Playground** → sends `cube(10);` to WASM via Web Worker
+2. **WASM** → calls `openscad-mesh::compile_and_render("cube(10);")`
+3. **openscad-mesh** → calls `openscad-eval::evaluate("cube(10);")`
+4. **openscad-eval** → calls `openscad-ast::parse_to_ast("cube(10);")`
+5. **openscad-ast** → calls `openscad-parser::parse("cube(10);")` → returns **CST**
+6. **openscad-ast** → transforms CST to typed **AST** → returns to openscad-eval
+7. **openscad-eval** → evaluates AST → returns **Evaluated AST (Geometry IR)** to openscad-mesh
+8. **openscad-mesh** → transforms Evaluated AST to **Mesh** → returns to WASM
+9. **WASM** → returns `MeshHandle` (vertex + index buffers) to Playground
+10. **Playground** → builds `THREE.BufferGeometry` and renders
+
+### 3.0.1 High-Level Pipeline Components
 
 1. **Input**  
    OpenSCAD source text from the Playground editor.
 
 2. **Parser – `libs/openscad-parser`**  
-   - Tree-sitter grammar for OpenSCAD via bindings.  
-   - Produces a typed **CST** with spans.
+   - Tree-sitter grammar for OpenSCAD via Rust bindings.  
+   - Produces a typed **CST** (Concrete Syntax Tree) with spans.
+   - **Public API**: `parse(source: &str) -> Result<Tree, ParseError>`
 
 3. **AST – `libs/openscad-ast`**  
-   - Converts CST into a typed **AST**.  
+   - Converts CST into a typed **AST** (Abstract Syntax Tree).  
    - Every node carries a `Span { start: usize, end: usize }` for source mapping.
+   - **Public API**: `parse_to_ast(source: &str) -> Result<Vec<Statement>, AstError>`
+   - Uses `openscad-parser` internally to obtain CST.
 
 4. **Evaluator – `libs/openscad-eval`**  
    - Walks the AST, manages scopes, modules, functions, special vars (`$fn`, `$fa`, `$fs`).  
-   - Produces **Geometry IR** (e.g. `GeometryNode::Cube { size, center, span }`).  
+   - Produces **Evaluated AST / Geometry IR** (e.g. `GeometryNode::Cube { size, center, span }`).  
+   - **Public API**: `evaluate(source: &str) -> Result<Vec<GeometryNode>, EvalError>`
+   - Uses `openscad-ast` internally to obtain AST.
    - Includes a **memoization/caching layer**:
      - Key: `hash(AST node + scope variables)`.  
      - If a subtree and its dependencies are unchanged, reuse cached result.
    - Includes **recursion depth checks** and uses `stacker` to avoid WASM stack overflows for complex recursive scripts.
 
-5. **Geometry Kernel – `libs/openscad-mesh`**  
-   - Consumes Geometry IR from `libs/openscad-eval` and outputs mesh geometry.
-   - Uses best-in-class algorithms for 2D/3D mesh generation, boolean CSG, and transformations.
-   - Parallelism via **`rayon`** for heavy operations.
-   - Exposes a **safe, high-level Rust API** (e.g. `fn union(&self, other: &Self) -> Result<Self, Error>`).
-   - **2D Primitives**: `circle(r|d)`, `square(size, center)`, `polygon(points, paths)`.
-   - **3D Primitives**: `sphere(r|d)`, `cube(size, center)`, `cylinder(h, r|d, r1|d1, r2|d2, center)`, `polyhedron(points, faces, convexity)`.
-   - **Extrusions**: `linear_extrude(height, center, convexity, twist, slices)`, `rotate_extrude(angle, convexity)`.
-   - **Transformations**: `translate`, `rotate`, `scale`, `resize`, `mirror`, `multmatrix`, `color`, `offset`, `hull`, `minkowski`.
-   - **Boolean Operations**: `union`, `difference`, `intersection`.
+5. **Mesh Generator – `libs/openscad-mesh`**  
+   - Consumes Evaluated AST (Geometry IR) from `openscad-eval` and outputs a mesh.
+   - **Public API**: `compile_and_render(source: &str) -> Result<Mesh, MeshError>`
+   - Uses `openscad-eval` internally to obtain Evaluated AST.
+   - Implements **browser-safe algorithms** for:
+     - **3D Primitives**: cube, sphere, cylinder, polyhedron
+     - **2D Primitives**: circle, square, polygon
+     - **Boolean Operations**: union, difference, intersection (using BSP trees)
+     - **Transformations**: translate, rotate, scale, mirror, multmatrix, resize, color
+     - **Extrusions**: linear_extrude, rotate_extrude
+     - **Advanced**: hull, minkowski, offset
+   - Internal math uses `f64`; export to GPU-friendly `f32` at the boundary.
 
-6. **Mesh Export (Kernel)**  
-   - Performed exclusively in `libs/openscad-mesh`.  
-   - Converts internal `Mesh` representation into mesh buffers suitable for zero-copy WASM interfaces (e.g. `GlMeshBuffers`).  
-   - Internal math uses `f64`; export to GPU-friendly `f32` only at the kernel boundary.
+6. **WASM – `libs/wasm`**  
+   - Thin interface-only orchestration layer.  
+   - **Public API**: `compile_and_render(source: &str) -> Result<MeshHandle, JsValue>`
+   - Calls `openscad-mesh` to process code and return mesh buffers.  
+   - No mesh logic, no parsing logic—pure delegation.
+   - Serializes rich diagnostics from error chains.  
+   - Initializes panic hooks in debug builds.
 
-7. **WASM – `libs/wasm`**  
-     - Thin interface-only orchestration between crates.  
-     - Exposes kernel functionality from `libs/openscad-mesh` (e.g. `compile_and_render(source: &str)`); no mesh logic or handlers in WASM.  
-     - Serializes rich diagnostics from kernel error chains.  
-     - Initializes panic hooks in debug builds.
-
-8. **Playground**  
+7. **Playground – `apps/playground`**  
    - Svelte + Three.js front-end.  
    - Uses a Web Worker to invoke the WASM pipeline.  
    - Receives typed arrays and constructs `THREE.BufferGeometry` without copying.
@@ -177,15 +231,44 @@ High-level pipeline:
   - `Vec3` type alias in `libs/openscad-mesh` must point to `DVec3`.
 
 - **Export Precision**  
-  - `f32` is allowed **only** for GPU-bound data in `GlMeshBuffers`.
+  - `f32` is allowed **only** for GPU-bound data in mesh buffers.
 
-- **2D Operations (Clipper2)**  
-  - When converting `f64` → `i64`, use a **standardized scaling factor** (e.g. `1e6`) configured centrally in `config.rs` (for example a `CLIPPER_SCALE` constant).  
+- **2D Operations**  
+  - When converting `f64` → `i64` for integer-based algorithms, use a **standardized scaling factor** (e.g. `1e6`) configured centrally in `config.rs`.  
   - Avoid ad-hoc scaling to prevent grid-snapping artifacts.
 
 - **Robust Predicates**  
   - Use the `robust` crate for exact predicates (e.g. orientation, incircle).  
   - Do **not** rely on naive epsilon comparisons for validity checks.
+
+- **Browser Safety**  
+  - All Rust crates must compile to `wasm32-unknown-unknown` without native dependencies.  
+  - Verify generated WASM is browser-safe (no filesystem, no threads unless explicitly enabled).
+
+### 3.1.1 Rust Libraries & Browser-Safe Algorithms
+
+All geometry processing is CPU-bound and runs in Rust via WASM. The following algorithms and libraries provide the required functionality:
+
+| Operation Category | OpenSCAD Functions | Rust Algorithm / Library |
+|-------------------|-------------------|-------------------------|
+| **Linear Algebra** | Matrix transforms | `glam` (f64 `DMat4`, `DVec3`, `DQuat`) |
+| **3D Primitives** | `cube`, `sphere`, `cylinder`, `polyhedron` | Custom mesh generation (vertex + index buffers) |
+| **2D Primitives** | `circle`, `square`, `polygon` | Custom 2D geometry with `robust` predicates |
+| **Triangulation** | Polygon → triangles | Ear clipping algorithm (custom implementation) |
+| **Boolean Ops** | `union`, `difference`, `intersection` | BSP trees (csg.js algorithm port) |
+| **Hull** | `hull()` | QuickHull algorithm (custom implementation) |
+| **Minkowski** | `minkowski()` | Convex sum / vertex-face iteration |
+| **Offset** | `offset(r\|delta)` | Clipper2-style polygon offset (custom) |
+| **Extrusions** | `linear_extrude`, `rotate_extrude` | Custom mesh generation with twist/scale support |
+| **Transformations** | `translate`, `rotate`, `scale`, `mirror`, `multmatrix`, `resize` | `glam` matrix operations |
+| **Color** | `color()` | Metadata propagation (RGBA per-vertex) |
+| **Robust Predicates** | Geometric tests | `robust` crate for exact orientation/incircle |
+
+**Key Design Decisions:**
+- All algorithms implemented in pure Rust (no C/C++ dependencies) for browser safety.
+- `f64` precision internally; `f32` only for GPU export buffers.
+- BSP trees chosen over CGAL/Manifold for browser compatibility.
+- `glam` used for all linear algebra (f64 mode enabled).
 
 ### 3.2 Source Mapping & Diagnostics
 
@@ -218,24 +301,24 @@ The workspace must form a clear, acyclic dependency graph:
 ```text
 apps/playground (SvelteKit + Three.js)
   └─> wasm
-        └─> openscad-mesh     (consumes Evaluated AST, generates Mesh)
+        └─> openscad-mesh      (consumes Evaluated AST, generates Mesh)
               └─> openscad-eval   (produces Evaluated AST / IR)
-              └─> openscad-ast    (builds AST from CST)
+                    └─> openscad-ast    (builds AST from CST)
                           └─> openscad-parser   (produces CST from source)
 
 editors (VSCode, Neovim, etc.)
   └─> openscad-lsp          (tower-lsp + Tree-sitter)
         └─> openscad-ast?   (optional, for semantic features)
-                └─> openscad-parser
+              └─> openscad-parser
 ```
 
 Key rules:
 
 - `openscad-parser` takes OpenSCAD source and produces a Tree-sitter CST.
 - `openscad-ast` depends on `openscad-parser` to build typed AST nodes.
-- `openscad-eval` consumes `openscad-ast` and produces an **Evaluated AST** (Geometry IR). It does **not** depend on `openscad-mesh`.
-      - `openscad-mesh` consumes the Evaluated AST from `openscad-eval` and generates the geometry.
-      - `wasm` orchestrates via `openscad_mesh` public APIs only (e.g. `compile`, `process_openscad`), and does not implement mesh logic or import parser/AST crates directly.
+- `openscad-eval` depends on `openscad-ast` and produces an **Evaluated AST** (Geometry IR). It does **not** depend on `openscad-mesh`.
+- `openscad-mesh` depends on `openscad-eval` and consumes the Evaluated AST to generate the mesh.
+- `wasm` orchestrates via `openscad-mesh` public APIs only (e.g. `compile_and_render`), and does not implement mesh logic or import parser/AST crates directly.
 
 ### 3.4 Library Responsibilities & Relationships
 
@@ -270,27 +353,27 @@ Key rules:
     4. Downstream crates never recompute transforms; they consume the already-baked matrix, keeping SRP boundaries intact.
 
 - **`libs/openscad-mesh`**  
-  - Geometry kernel and mesh implementation.  
-  - **Consumes Evaluated AST** from `libs/openscad-eval` to construct mesh geometry.  
-  - Exposes high-level APIs to convert OpenSCAD source (via eval) into Meshes.  
-  - Uses best-in-class algorithms for all geometry operations while maintaining 100% OpenSCAD output compatibility.
-  - **Supported Operations**:
-    - **2D Primitives**: `circle(r|d)`, `square(size, center)`, `polygon(points, paths)`
-    - **3D Primitives**: `sphere(r|d)`, `cube(size, center)`, `cylinder(h, r|d, r1|d1, r2|d2, center)`, `polyhedron(points, faces, convexity)`
-    - **Extrusions**: `linear_extrude(height, center, convexity, twist, slices)`, `rotate_extrude(angle, convexity)`
-    - **Transformations**: `translate([x,y,z])`, `rotate([x,y,z])`, `rotate(a, [x,y,z])`, `scale([x,y,z])`, `resize([x,y,z], auto, convexity)`, `mirror([x,y,z])`, `multmatrix(m)`, `color("name", alpha)`, `color([r,g,b,a])`, `offset(r|delta, chamfer)`, `hull()`, `minkowski(convexity)`
-    - **Boolean Operations**: `union()`, `difference()`, `intersection()`
-  - All primitives mirror OpenSCAD's geometry generation exactly: fragment counts use `$fn/$fa/$fs` rules, vertices follow the same ordering as upstream OpenSCAD.
-  - **Transform handling**: `from_ir` invokes a dedicated transform applicator that multiplies mesh vertices (and recomputes normals) by the 4×4 matrix emitted by the evaluator.
-  - **SRP helpers**: `openscad_mesh::transform` module exposes `apply_transform(mesh: &mut Mesh, matrix: DMat4)` with doc comments and tests.
+  - Mesh generator that consumes Evaluated AST from `openscad-eval`.  
+  - **Public API**: `compile_and_render(source: &str) -> Result<Mesh, MeshError>`
+  - Uses `openscad-eval` internally to parse and evaluate OpenSCAD source.
+  - Implements **browser-safe algorithms** for all geometry operations:
+    - **3D Primitives**: `cube`, `sphere`, `cylinder`, `polyhedron`
+    - **2D Primitives**: `circle`, `square`, `polygon`
+    - **Boolean Operations**: `union`, `difference`, `intersection` (BSP tree algorithm)
+    - **Transformations**: `translate`, `rotate`, `scale`, `mirror`, `multmatrix`, `resize`, `color`
+    - **Extrusions**: `linear_extrude`, `rotate_extrude`
+    - **Advanced**: `hull`, `minkowski`, `offset`
+  - **100% OpenSCAD API Compatibility**: Parameters and output shapes match OpenSCAD exactly.
+  - **SRP structure**: Each primitive/operation in its own folder with `mod.rs` + `tests.rs`.
+  - **Transform application**: `from_ir` invokes transform applicators that multiply vertex positions by the 4×4 matrix from the evaluator.
 
 - **`libs/wasm`**  
-  - Thin bridge.  
+  - Thin bridge between browser and Rust.  
   - Calls `openscad-mesh` to process code and return mesh buffers.  
-  - No mesh logic, no parsing logic.  
+  - No mesh logic, no parsing logic—pure delegation.
   - Exposes a small set of WASM entry points, notably `compile_and_render(source: &str)` and `compile_and_count_nodes(source: &str)`, where `compile_and_render` returns a `MeshHandle` that owns vertex (`Float32Array`) and index (`Uint32Array`) buffers plus basic counts.  
-  - Produces the **only browser-facing WASM bundle**: the wasm-bindgen output under `libs/wasm/pkg` (for example `wasm.js` + `wasm_bg.wasm`), analogous to Tree-sitter's `web-tree-sitter.{js,wasm}` pair.  
-  - Is consumed by TypeScript via a small wrapper (for example `initWasm`, `compile(...)`) that mirrors `web-tree-sitter`'s `Parser.init()` + `parser.parse()` pattern and forwards the resulting `MeshHandle` into the Three.js scene.
+  - Produces the **only browser-facing WASM bundle**: the wasm-bindgen output under `libs/wasm/pkg` (for example `wasm.js` + `wasm_bg.wasm`).  
+  - Is consumed by TypeScript via a small wrapper (for example `initWasm`, `compile(...)`) that forwards the resulting `MeshHandle` into the Three.js scene.
 
 - **`libs/openscad-lsp`**  
   - Rust-native Language Server built with `tower-lsp`.  
@@ -313,7 +396,7 @@ libs/openscad-ast      (AST)
 libs/openscad-eval     (Evaluated AST / IR)
         │
         ▼
-libs/openscad-mesh     (Mesh Generation from IR)
+libs/openscad-mesh     (Mesh)
         │
         ▼
 libs/wasm              (MeshHandle)
@@ -372,64 +455,83 @@ A vertical slice is always preferred over broad, unfinished scaffolding.
   - Support `include` / `use` semantics.
 
 - **Phase 4 – Sphere & Resolution Controls**  
-  - Implement `sphere()` via the same latitude/longitude tessellation as upstream OpenSCAD (mirroring `SphereNode::createGeometry`).  
-  - Use the `EvaluationContext` resolution parameters when tessellating the sphere so `$fn/$fa/$fs` yield the same fragment counts as the C++ `CurveDiscretizer`.  
-  - Keep regression tests comparing cap heights, vertex/triangle counts, and fragment clamping to guard against regressions. Future work in this phase focuses on maintaining parity as new upstream behaviour emerges.  
-  - **Cylinder & Polyhedron Parity Prep:** research `CylinderNode::createGeometry` + `PolyhedronNode::createGeometry` in `openscad/src/core/primitives.cc` and capture requirements for `$fn/$fa/$fs` handling on cylinders and winding/validation rules for arbitrary polyhedra. (See Phase 5 below for concrete implementation tasks.)
+  - Implement `sphere()` with OpenSCAD-compatible tessellation.  
+  - Use the `EvaluationContext` resolution parameters when tessellating the sphere so `$fn/$fa/$fs` yield the same fragment counts as OpenSCAD.  
+  - Keep regression tests comparing vertex/triangle counts and fragment clamping to guard against regressions.
 
-- **Phase 4b – 2D Primitives & Outline Kernel**  
-  - Port OpenSCAD’s 2D primitives from `primitives.cc`: `square`, `circle`, and `polygon`. Each primitive must emit identical vertex ordering, winding, and diagnostics.  
-  - **`square()`**: mirror `SquareNode::createGeometry` with scalar/vector `size`, optional `center`, range checking, and AST validation that matches the C++ warnings.  
-  - **`circle()`**: reuse `CurveDiscretizer::getCircularSegmentCount` (with `$fn/$fa/$fs`) to tessellate outlines exactly like `CircleNode::createGeometry`, honoring `r`/`d` precedence and range checks.  
-  - **`polygon()`**: support both implicit outer path (when `paths` undefined) and explicit `paths` with hole semantics (first outline positive, subsequent outlines negative) as implemented in `PolygonNode::createGeometry`, including convexity clamping and index diagnostics.  
-  - Introduce a reusable 2D outline representation in `openscad-mesh` that downstream extruders (`linear_extrude`, `rotate_extrude`) can consume without re-tessellating.  
-  - Tests: parity fixtures comparing vertex sequences, winding, convexity, and error messages vs. OpenSCAD for representative inputs (degenerate sizes, reversed paths, invalid indices).  
-  - Documentation: record fragment math + outline semantics in `specs/split-parser` and `specs/pipeline` to keep future phases (extrusions/offset) aligned.
+- **Phase 4b – 2D Primitives**  
+  - Implement OpenSCAD's 2D primitives: `square`, `circle`, and `polygon`. Each primitive must emit identical vertex ordering, winding, and diagnostics.  
+  - **`square(size, center)`**: scalar/vector `size`, optional `center`, range checking.  
+  - **`circle(r | d)`**: use `$fn/$fa/$fs` to tessellate outlines, honoring `r`/`d` precedence.  
+  - **`polygon([points], [paths])`**: support both implicit outer path and explicit `paths` with hole semantics.  
+  - Introduce a reusable 2D outline representation in `openscad-mesh` that downstream extruders (`linear_extrude`, `rotate_extrude`) can consume.  
+  - Tests: parity fixtures comparing vertex sequences, winding, and error messages vs. OpenSCAD.
 
 - **Phase 5 – Cylinders, Polyhedra & Transformations**  
-  - Support `translate`, `rotate`, `scale` transformations in IR and `openscad-mesh`.  
+  - Support `translate`, `rotate`, `scale`, `mirror`, `multmatrix`, `resize`, `color` transformations in IR and `openscad-mesh`.  
   - Ensure transformations preserve and update Spans for diagnostics.  
-  - **Cylinder parity:** add evaluator + `openscad-mesh` primitives that replicate OpenSCAD cylinders (including cone/inverted-cone variants, centered vs non-centered heights, and `$fn/$fa/$fs` driven fragment counts). Tests will compare vertex counts, cap winding, and parameter validation with upstream.  
-  - **Polyhedron parity:** map `polyhedron(points, faces, convexity)` into IR + `openscad-mesh`, mirroring the upstream validation rules (vector parsing, face reversal, convexity flag, and strict error logging). Tests cover valid tetrahedron cases, invalid indices, <3 vertex rejection, and consistent diagnostics.  
+  - **Cylinder**: `cylinder(h, r|d, center)` and `cylinder(h, r1|d1, r2|d2, center)` with `$fn/$fa/$fs` driven fragment counts.  
+  - **Polyhedron**: `polyhedron(points, faces, convexity)` with validation rules (face reversal, convexity flag, strict error logging).  
   - Update docs/tests whenever OpenSCAD introduces changes so parity remains explicit.
 
 - **Phase 6 – Boolean Operations (Priority: HIGH)**  
-  - Implement robust `union`, `difference`, and `intersection` using best-in-class CSG algorithms.  
-  - **OpenSCAD API Mapping**:
-    - `Mesh::union(a, b)` / `Mesh::union_all(meshes)` → OpenSCAD `union() { children }`
-    - `Mesh::difference(a, b)` / `Mesh::difference_all(meshes)` → OpenSCAD `difference() { children }`
-    - `Mesh::intersection(a, b)` / `Mesh::intersection_all(meshes)` → OpenSCAD `intersection() { children }`
-  - Use robust predicates, R-Tree or BVH for broad phase, and correct retriangulation.  
+  - Implement robust `union`, `difference`, and `intersection` using BSP tree algorithms (browser-safe).  
+  - Use robust predicates for numerical stability.  
   - Add fuzz testing to validate mesh invariants.
   - **Skip performance optimization for now**; focus on correctness and feature coverage.
 
+- **Phase 7 – Extrusions & Advanced Operations**  
+  - **`linear_extrude(height, center, convexity, twist, slices)`**: extrude 2D shapes along Z axis.  
+  - **`rotate_extrude(angle, convexity)`**: revolve 2D shapes around Z axis.  
+  - **`hull()`**: convex hull using QuickHull algorithm.  
+  - **`minkowski(convexity)`**: Minkowski sum.  
+  - **`offset(r|delta, chamfer)`**: 2D offset operation.
+
 ### 4.1 OpenSCAD Feature Coverage Matrix
 
-| Category | OpenSCAD Feature | `openscad-mesh` API | Status | Priority |
-|----------|------------------|---------------------|--------|----------|
-| **2D Primitives** | `circle(r\|d)` | `Mesh2D::circle(radius, segments)` | 🔲 Pending | Medium |
-| | `square(size, center)` | `Mesh2D::square(size, center)` | 🔲 Pending | Medium |
-| | `polygon(points, paths)` | `Mesh2D::polygon(points, paths)` | 🔲 Pending | Medium |
-| **3D Primitives** | `cube(size, center)` | `Mesh::cube(size, center)` | 🔲 Pending | High |
-| | `sphere(r\|d)` | `Mesh::sphere(radius, segments)` | 🔲 Pending | High |
-| | `cylinder(h, r\|d, r1\|d1, r2\|d2, center)` | `Mesh::cylinder(...)` | 🔲 Pending | Medium |
-| | `polyhedron(points, faces, convexity)` | `Mesh::polyhedron(...)` | 🔲 Pending | Medium |
-| **Extrusions** | `linear_extrude(height, center, convexity, twist, slices)` | `Mesh2D::linear_extrude(...)` | 🔲 Pending | Medium |
-| | `rotate_extrude(angle, convexity)` | `Mesh2D::rotate_extrude(...)` | 🔲 Pending | Medium |
-| **Transformations** | `translate([x,y,z])` | `mesh.translate(offset)` | 🔲 Pending | High |
-| | `rotate([x,y,z])` | `mesh.rotate(angles)` | 🔲 Pending | High |
-| | `rotate(a, [x,y,z])` | `mesh.rotate_axis(angle, axis)` | 🔲 Pending | High |
-| | `scale([x,y,z])` | `mesh.scale(factors)` | 🔲 Pending | High |
-| | `resize([x,y,z], auto, convexity)` | `mesh.resize(...)` | 🔲 Pending | Low |
-| | `mirror([x,y,z])` | `mesh.mirror(plane)` | 🔲 Pending | Medium |
-| | `multmatrix(m)` | `mesh.transform(matrix)` | 🔲 Pending | Low |
-| | `color("name", alpha)` / `color([r,g,b,a])` | `mesh.set_color(color)` | 🔲 Pending | Low |
-| | `offset(r\|delta, chamfer)` | `Mesh2D::offset(...)` | 🔲 Pending | Low |
-| | `hull()` | `Mesh::hull(meshes)` | 🔲 Pending | Low |
-| | `minkowski(convexity)` | `Mesh::minkowski(a, b)` | 🔲 Pending | Low |
-| **Boolean Operations** | `union() { }` | `Mesh::union(a, b)` / `Mesh::union_all(meshes)` | 🔲 Pending | High |
-| | `difference() { }` | `Mesh::difference(a, b)` / `Mesh::difference_all(meshes)` | 🔲 Pending | High |
-| | `intersection() { }` | `Mesh::intersection(a, b)` / `Mesh::intersection_all(meshes)` | 🔲 Pending | High |
+This matrix documents **100% OpenSCAD API compatibility** with exact parameter signatures from `openscad/src/core/*.cc`:
+
+| OpenSCAD Feature | Parameters | Status | Rust Algorithm |
+|------------------|-----------|--------|----------------|
+| **3D Primitives** | | | |
+| `cube()` | `size` (scalar or `[x,y,z]`), `center` | 🔲 Pending | Vertex + index buffer |
+| `sphere()` | `r` or `d`, `$fn/$fa/$fs` | 🔲 Pending | Lat/long tessellation |
+| `cylinder()` | `h`, `r`/`d` or `r1`/`d1`+`r2`/`d2`, `center`, `$fn/$fa/$fs` | 🔲 Pending | Circle extrusion |
+| `polyhedron()` | `points`, `faces`, `convexity` | 🔲 Pending | Face validation + triangulation |
+| **2D Primitives** | | | |
+| `circle()` | `r` or `d`, `$fn/$fa/$fs` | 🔲 Pending | Polygon tessellation |
+| `square()` | `size` (scalar or `[x,y]`), `center` | 🔲 Pending | 4-vertex polygon |
+| `polygon()` | `points`, `paths` (optional for holes) | 🔲 Pending | Ear clipping triangulation |
+| **Transformations** | | | |
+| `translate()` | `v=[x,y,z]` | 🔲 Pending | `glam::DMat4::from_translation` |
+| `rotate()` | `a=[x,y,z]` (Euler) or `a`, `v=[x,y,z]` (axis-angle) | 🔲 Pending | `glam` rotation matrices |
+| `scale()` | `v` (scalar or `[x,y,z]`) | 🔲 Pending | `glam::DMat4::from_scale` |
+| `mirror()` | `v=[x,y,z]` | 🔲 Pending | Reflection matrix |
+| `multmatrix()` | `m` (4×4 matrix) | 🔲 Pending | Direct `DMat4` |
+| `resize()` | `newsize=[x,y,z]`, `auto=[bool...]`, `convexity` | 🔲 Pending | Bounding box scale |
+| `color()` | `"name"`/`"#hex"`/`[r,g,b,a]`, `alpha` | 🔲 Pending | Per-vertex RGBA metadata |
+| **Boolean Operations** | | | |
+| `union()` | children | 🔲 Pending | BSP tree: `A.clipTo(B); B.clipTo(A); ...` |
+| `difference()` | children (first - rest) | 🔲 Pending | BSP tree: `~(~A \| B)` |
+| `intersection()` | children | 🔲 Pending | BSP tree: `~(~A \| ~B)` |
+| **Extrusions** | | | |
+| `linear_extrude()` | `height`/`v`, `center`, `convexity`, `twist`, `slices`, `scale`, `$fn/$fa/$fs` | 🔲 Pending | Slice-based mesh generation |
+| `rotate_extrude()` | `angle`, `start`, `convexity`, `$fn/$fa/$fs` | 🔲 Pending | Revolution mesh generation |
+| **Advanced Operations** | | | |
+| `hull()` | children | 🔲 Pending | QuickHull algorithm |
+| `minkowski()` | `convexity`, children | 🔲 Pending | Convex sum / vertex-face iteration |
+| `offset()` | `r` or `delta`, `chamfer`, `$fn/$fa/$fs` | 🔲 Pending | Clipper2-style offset |
+| `fill()` | children | 🔲 Pending | Polygon filling |
+| **Special Variables** | | | |
+| `$fn` | Fragment count override | 🔲 Pending | `EvaluationContext` |
+| `$fa` | Minimum fragment angle | 🔲 Pending | `resolution::compute_segments` |
+| `$fs` | Minimum fragment size | 🔲 Pending | `resolution::compute_segments` |
+
+**Compatibility Notes:**
+- All parameter names and precedence rules match OpenSCAD (e.g., `d` takes precedence over `r`).
+- Warning/error messages mirror OpenSCAD's `LOG()` output where applicable.
+- Face winding and vertex ordering match OpenSCAD's `PolySet` output.
+- `$fn/$fa/$fs` resolution rules: if `$fn > 0`, use it; else `ceil(min(360/$fa, 2πr/$fs))` with min 5 fragments.
 
 A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase lives in `tasks.md`.
 
@@ -461,9 +563,9 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
   - Add **fuzz tests** for boolean operations using `proptest`.
 
 - **Performance & Safety**  
-  - Prefer safe Rust; use `unsafe` only inside small, well-audited geometry kernels encapsulated behind safe APIs.  
+  - Prefer safe Rust; use `unsafe` only in small, well-audited sections encapsulated behind safe APIs.  
   - Enable overflow checks in builds that guard geometry math (e.g. `overflow-checks = true` in appropriate profiles), especially in debug and fuzzing configurations.  
-  - Use `rayon` for safe data-parallel operations when beneficial.
+  - Use `rayon` for safe data-parallel operations when beneficial (browser-safe when WASM threads are available).
 
 ### 5.2 WASM & TypeScript Standards
 
@@ -521,7 +623,7 @@ A detailed breakdown of tasks, subtasks, and acceptance criteria for each phase 
   - Build tooling such as `scripts/build-wasm.sh` and any Node-based helper (for example `build-wasm.js`) is strictly CLI-only and must never be imported into browser bundles, mirroring Tree-sitter's separation between its `binding_web` runtime and `script/build.js`.
 
 - **WASM Parallelism**  
-  - Where browser support allows, enable WASM threads + shared memory so `rayon` can run in parallel inside `openscad-mesh` for heavy geometry operations.
+  - Where browser support allows, enable WASM threads + shared memory so `rayon` can run in parallel inside `openscad-mesh` for heavy operations.
 
 - **Local WASM Build & Distribution**  
   - `libs/wasm` is built for the `wasm32-unknown-unknown` target via dedicated helpers (`scripts/build-wasm.sh` on Unix-like systems and a Node CLI equivalent on Windows, such as `build-wasm.js`).  
@@ -551,10 +653,15 @@ These internal resources are the primary references for the implementation:
   - `libs/openscad-parser/test/corpus/**`  
   - Optionally, an upstream OpenSCAD grammar such as `holistic-stack/tree-sitter-openscad` may be consulted for reference or additional test cases, but `grammar.json` remains the source of truth.
 
-- **Geometry Kernel: `libs/openscad-mesh`**  
-  - Rust mesh generation library using best-in-class algorithms for 2D/3D primitives, boolean CSG, and transformations.  
-  - Public API mirrors OpenSCAD expectations (parameters, output shapes) for 100% compatibility.  
-  - Original Rust implementation optimized for this pipeline; no external geometry kernel dependencies.
+- **OpenSCAD Reference Implementation**  
+  - The OpenSCAD C++ source under `openscad/` serves as the reference for feature parity (parameters, output shapes, diagnostics).  
+  - `libs/openscad-mesh` implements equivalent functionality using browser-safe algorithms.
+
+- **Browser-Safe Algorithms**  
+  - **BSP Trees**: For boolean operations (union, difference, intersection) - based on csg.js by Evan Wallace.  
+  - **Ear Clipping**: For polygon triangulation.  
+  - **QuickHull**: For convex hull computation.  
+  - **Robust Predicates**: The `robust` crate for exact geometric predicates.
 
 All new work should keep this overview in sync, and `tasks.md` should always reflect the current state of the actionable backlog.
 

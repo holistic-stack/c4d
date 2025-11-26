@@ -13,7 +13,35 @@
 - All failures must return explicit errors; no hidden fallbacks.
 - All geometry code uses `f64` internally; `f32` is only for GPU export.
 - Keep files under **500 lines**; split as soon as they grow too large.
- - For every new public API (functions, structs, modules), add Rust doc-comments with at least one minimal usage example, and keep examples compiling as part of tests.
+- For every new public API (functions, structs, modules), add Rust doc-comments with at least one minimal usage example, and keep examples compiling as part of tests.
+- All Rust crates must be **browser-safe** (compile to `wasm32-unknown-unknown` without native dependencies).
+
+## Architecture: CPU (Rust/WASM) vs GPU (WebGL)
+
+All geometry operations are **CPU-bound** and run in Rust via WebAssembly:
+
+| Layer | Role | Technology |
+|-------|------|------------|
+| **Rust (WASM)** | Mesh generation: vertices, normals, indices | `libs/openscad-mesh` |
+| **WebGL** | Rendering only | Three.js `BufferGeometry` |
+
+**Workflow:**
+1. Rust computes mesh geometry (CPU-bound operations like `union()`, `linear_extrude()`).
+2. Rust returns `Float32Array` (vertices) + `Uint32Array` (indices) to JavaScript.
+3. Three.js creates `BufferGeometry` and renders via WebGL (GPU).
+
+**Rust Libraries for Geometry Processing:**
+
+| Operation | Rust Algorithm/Library |
+|-----------|----------------------|
+| Linear Algebra | `glam` (f64 `DMat4`, `DVec3`) |
+| Boolean Ops | BSP trees (csg.js algorithm) |
+| Triangulation | Ear clipping (custom) |
+| Hull | QuickHull (custom) |
+| Minkowski | Convex sum (custom) |
+| Offset | Clipper2-style (custom) |
+| Extrusions | Slice-based mesh generation |
+| Robust Predicates | `robust` crate |
 
 For each task, we list:
 
@@ -25,22 +53,27 @@ For each task, we list:
 
 ## Phase 0 – Pre-Bootstrap Evaluation
 
-### Task 0.1 – Confirm Geometry Kernel Strategy
+### Task 0.1 – Confirm Geometry Kernel Strategy (Browser-Safe Algorithms)
 
 **Goal**  
-Confirm and document that `libs/openscad-mesh` will use best-in-class algorithms for 2D/3D mesh generation, boolean CSG, and transformations while maintaining 100% OpenSCAD API compatibility.
+Confirm and document that `libs/openscad-mesh` will use browser-safe algorithms for mesh generation and operations, not external geometry kernels.
 
 **Steps**
 
-1. Research and select best-in-class algorithms for each geometry operation category (primitives, booleans, extrusions, transformations).  
-2. Write a short design note describing:
-   - The chosen approach: original Rust implementation in `libs/openscad-mesh` using best-in-class algorithms.  
-   - Which OpenSCAD features are in scope for the first vertical slices.  
-   - An explicit statement that external geometry kernels will not be used as runtime dependencies.
+1. Document the chosen algorithms for each operation:
+   - **Boolean Operations**: BSP trees (based on csg.js by Evan Wallace)
+   - **Triangulation**: Ear clipping algorithm
+   - **Convex Hull**: QuickHull algorithm
+   - **Robust Predicates**: `robust` crate for exact geometric predicates
+2. Ensure all chosen algorithms are browser-safe (no native dependencies, compile to WASM).
+3. Write a short design note describing:
+   - The chosen approach: browser-safe Rust implementations in `libs/openscad-mesh`.  
+   - The algorithms selected for each operation type.  
+   - An explicit statement that external geometry kernels (manifold3d, csgrs, CGAL) will not be used as runtime dependencies.
 
 **Acceptance Criteria**
 
-- A design note exists in the repo (e.g. `specs/pipeline/kernel-decision.md`) clearly stating `libs/openscad-mesh` strategy.  
+- A design note exists in the repo (e.g. `specs/pipeline/kernel-decision.md`) clearly stating the browser-safe algorithm choices.  
 - `overview-plan.md` and the dependency graph remain valid for this approach.
 
 ### Task 0.2 – Confirm Tree-sitter Grammar Integration
@@ -87,8 +120,9 @@ Initialize the Cargo workspace and core Rust crates from scratch, with proper de
      - `glam` (f64 support)  
      - `thiserror`  
      - `robust`  
-     - `rayon`  
+     - `rayon` (optional, for parallel operations when WASM threads are available)
    - Define `config.rs` with core constants (e.g. `EPSILON`, `DEFAULT_SEGMENTS`) and document their purpose.
+   - Ensure all dependencies are browser-safe (compile to `wasm32-unknown-unknown`).
 
 3. **Create `libs/openscad-eval`**  
    - Create structure:  
@@ -241,66 +275,66 @@ Provide a parse-only and structural analysis pipeline for OpenSCAD using `libs/o
 ### Task 1.5 – Enforce Pipeline Boundaries 
 
 **Goal**  
-Ensure all future `libs/openscad-mesh` implementations follow consistent patterns (safe Rust, `rayon` parallelism, explicit errors, robust predicates), before any primitives or boolean operations are added.
+Ensure all future `libs/openscad-mesh` implementations follow consistent patterns (browser-safe algorithms, `rayon` parallelism when available, explicit errors, robust predicates), before any primitives or boolean operations are added.
 
 **Steps**
 
 1. **Mesh Representation**  
-   - Use safe Rust data structures for mesh storage (e.g. `Vec<Vertex>`, `Vec<Face>`).  
-   - Pass indices between functions instead of references with complex lifetimes where appropriate.
+   - Use a simple, browser-safe mesh structure with vertices and triangle indices.  
+   - Keep ownership in central `Vec`s (e.g. `Vec<DVec3>` for vertices, `Vec<[u32; 3]>` for triangles).  
+   - Avoid complex pointer-based structures that are difficult to serialize across WASM boundaries.
 
 2. **Parallelism (`rayon`)**  
-   - Use `par_iter()`/`par_iter_mut()` for parallelizable operations over vertices, faces, or edges.  
-   - Keep side effects confined to data local to each loop iteration, or use scoped parallelism patterns to avoid shared mutable state.
+   - Use `par_iter()`/`par_iter_mut()` for parallel operations when WASM threads are available.  
+   - Keep side effects confined to data local to each loop iteration.  
+   - Ensure algorithms work correctly in single-threaded mode (default for WASM without threads).
 
 3. **Memory & Safety**  
-   - Use safe Rust by default; prefer owned types and standard collections.  
-   - Use `unsafe` only in small, well-audited sections where performance demands it, and always expose a safe API on top.  
-   - All errors surface via `Result` types; never panic in library code paths.
+   - Use safe Rust throughout; avoid `unsafe` except where absolutely necessary for performance.  
+   - All public APIs return `Result<T, Error>` for fallible operations.  
+   - No panics in library code paths.
 
 4. **Error Handling**  
-   - Use typed Rust errors via `thiserror` for all failure cases.  
-   - Ensure all public `openscad-mesh` operations return `Result<Self, Error>` or similar, never relying on panics.
+   - Use `thiserror` for typed error definitions.  
+   - All public `openscad-mesh` operations return `Result<T, MeshError>` or similar, never relying on panics.
 
 5. **Testing Strategy**  
-   - Create comprehensive tests comparing output against OpenSCAD reference data, using topological invariants (e.g. Euler characteristic, watertight mesh) rather than relying only on exact floating-point equality.  
-   - Add new tests that exercise edge cases surfaced by fuzzing and visual regression.
+   - Write tests that verify mesh validity (vertex counts, triangle counts, bounding boxes).  
+   - Add fuzz tests using `proptest` to catch edge cases.  
+   - Include integration tests that verify end-to-end pipeline correctness.
 
 6. **Robust Predicates Initialization**  
-   - If the chosen robust predicates library requires a one-time initialization (for example an `exactinit()` call), invoke this once at WASM startup (e.g. in a Rust `init` function or lazy static) so all downstream geometry code benefits from correct predicate behaviour.
+   - If the `robust` crate requires initialization, invoke once at WASM startup.
 
-**Example: Boolean Union Implementation Pattern**
+**Boolean Operations (BSP Tree Algorithm)**
 
-- **Rust pattern**  
-  - Model mesh data with safe Rust structures:
-    - `vertices: Vec<Vertex>`, `faces: Vec<Face>` with appropriate indices.  
-  - Use safe Rust iteration:
-    - Sequential: `for face in &mut faces { /* classify/update */ }`.  
-    - Parallel: `faces.par_iter_mut().for_each(|face| { /* classify/update */ });` when no cross-face mutation is required.
-  - Have classification functions return explicit enums/results.  
-  - Any failure (numerical issues, invalid topology) must surface as a `Result` with a typed error.
-
-**Template: `Mesh::boolean` API**
+- **Algorithm**: Use BSP (Binary Space Partitioning) trees for boolean operations, based on csg.js by Evan Wallace.
+- **Operations**:
+  - `union(a, b)`: Combine two meshes, keeping exterior surfaces
+  - `difference(a, b)`: Subtract b from a
+  - `intersection(a, b)`: Keep only overlapping regions
 
 - **Rust public API shape (in `libs/openscad-mesh`)**  
-  - Provide a safe, explicit API:
-    - `pub fn boolean(&self, other: &Mesh, op: BooleanOp) -> Result<Mesh, MeshError>;`  
-    - `pub fn union(&self, other: &Mesh) -> Result<Mesh, MeshError>;`  
-    - `pub fn difference(&self, other: &Mesh) -> Result<Mesh, MeshError>;`  
-    - `pub fn intersection(&self, other: &Mesh) -> Result<Mesh, MeshError>;`
-  - `BooleanOp` is a small Rust enum (`Union`, `Difference`, `Intersection`).  
-  - `MeshError` is a `thiserror`-based type capturing triangulation failures, invalid topology, or precision issues.
+  ```rust
+  pub fn union(a: &Mesh, b: &Mesh) -> Result<Mesh, BooleanError>;
+  pub fn difference(a: &Mesh, b: &Mesh) -> Result<Mesh, BooleanError>;
+  pub fn intersection(a: &Mesh, b: &Mesh) -> Result<Mesh, BooleanError>;
+  pub fn union_all(meshes: &[Mesh]) -> Result<Mesh, BooleanError>;
+  pub fn difference_all(meshes: &[Mesh]) -> Result<Mesh, BooleanError>;
+  pub fn intersection_all(meshes: &[Mesh]) -> Result<Mesh, BooleanError>;
+  ```
+  - `BooleanError` is a `thiserror`-based type capturing triangulation failures, invalid topology, or numerical issues.
 
 - **Testing pattern**  
-  - Add tests for `union/difference/intersection` that validate:  
-    - Topological invariants (`validate()` passes, expected Euler characteristic).  
+  - Tests for `union/difference/intersection` that validate:  
+    - Mesh validity (non-empty, correct vertex/triangle counts).  
     - Expected behaviour on disjoint vs overlapping bounding boxes.  
-  - Ensure the Rust `boolean` operations never panic and always return a `Result`.
+  - Ensure operations never panic and always return a `Result`.
 
 **Acceptance Criteria**
 
-- Code reviews for new `libs/openscad-mesh` features explicitly check against these guidelines (mesh representation, parallelism, safety, error handling, testing, robust predicates).
-- New public boolean APIs in `libs/openscad-mesh` (`boolean`, `union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
+- Code reviews for new `libs/openscad-mesh` features explicitly check against these guidelines (browser-safety, parallelism, safety, error handling, testing, robust predicates).
+- New public boolean APIs in `libs/openscad-mesh` (`union`, `difference`, `intersection`) never panic in tests and always surface failures via `Result` with typed errors.
 ### Task 1.6 – WASM Runtime Packaging (Tree-sitter Style)
 
 **Goal**  
@@ -347,20 +381,20 @@ Implement a robust cube primitive in `libs/openscad-mesh` with TDD.
 
 2. **Implementation**
    - In `libs/openscad-mesh/src/primitives/cube/mod.rs`:
-     - Implement `pub fn cube(size: DVec3, center: bool) -> Mesh`.
-     - Use safe Rust data structures.
-   - Ensure cube construction uses standard `Vec` collections.
+     - Implement `pub fn cube(size: DVec3, center: bool) -> Result<Mesh, MeshError>`.
+     - Use browser-safe mesh structure (vertices + triangle indices).
+   - Ensure cube construction produces valid, watertight mesh.
 
 3. **Robustness**
    - Where predicates are needed (e.g. coplanarity checks), use `robust`-style predicates from the beginning rather than ad-hoc epsilon comparisons.
 
 4. **Validation**
-   - Implement `Mesh::validate()` (if not already) to run Euler checks and topology invariants.
+   - Implement `Mesh::validate()` to check mesh integrity (no degenerate triangles, correct winding).
 
 **Acceptance Criteria**
 
 - `cargo test -p openscad-mesh` passes with cube tests.
-- `Mesh::cube` produces a valid mesh for typical sizes.
+- `cube()` produces a valid mesh for typical sizes.
 
 ---
 
@@ -387,7 +421,7 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
    - Downstream consumers (the WASM boundary and the Playground) must never invent diagnostics; they always originate from this shared type.
 
 2. **Minimal `cube(10);` Pipeline Wiring**  
-   - Implement a tracer-bullet path that exercises **every layer** as described in `overview-plan.md` §3.5:
+   - Implement a tracer-bullet path that exercises **every layer** as described in `overview-plan.md` §3.0:
      - Playground sends the source string `cube(10);` to `libs/wasm`.
      - `libs/wasm` forwards `cube(10);` into a single entry point in `libs/openscad-mesh`.
      - `libs/openscad-mesh` calls `libs/openscad-eval` with the original source string.
@@ -405,7 +439,7 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
        pub fn compile_and_render_internal(
            source: &str,
        ) -> Result<MeshHandle, Vec<openscad_ast::Diagnostic>> {
-           // Calls openscad_mesh::from_source(source) and converts the result
+           // Calls openscad_mesh::compile_and_render(source) and converts the result
            // into a MeshHandle on success, or returns a Vec<Diagnostic> on error.
        }
        ```
@@ -493,7 +527,7 @@ Connect source → CST → AST → evaluated/flattened AST → Mesh through the 
 
 - Intentionally invalid OpenSCAD code produces a `Vec<Diagnostic>` with correct spans and messages in Rust, and the public `compile_and_render` binding throws a JavaScript error object of the form `{ diagnostics: Diagnostic[] }`.  
 - The worker converts this error into a `compile_error` message whose `payload` is a non-empty diagnostics array, and the Playground renders these diagnostics in a panel instead of crashing.  
-- A `cube(10);` snippet traverses the **full minimal pipeline** documented in `overview-plan.md` §3.5 (Playground → `libs/wasm` → `libs/openscad-mesh` → `libs/openscad-eval` → `libs/openscad-ast` → `libs/openscad-parser` → back up to `libs/openscad-mesh` → `libs/wasm` → Playground), verified by integration tests or targeted logging.
+- A `cube(10);` snippet traverses the **full minimal pipeline** documented in `overview-plan.md` §3.0 (Playground → `libs/wasm` → `libs/openscad-mesh` → `libs/openscad-eval` → `libs/openscad-ast` → `libs/openscad-parser` → back up to `libs/openscad-mesh` → `libs/wasm` → Playground), verified by integration tests or targeted logging.
 
 ---
 
@@ -554,28 +588,27 @@ Represent and evaluate OpenSCAD’s resolution variables `$fn`, `$fa`, and `$fs`
 
 ## Phase 4 – Sphere & Resolution
 
-### Task 4.1 – Sphere (Icosphere) with Resolution Controls
+### Task 4.1 – Sphere with Resolution Controls
 
 **Goal**  
 Implement a robust `sphere()` primitive with resolution managed by `$fn`, `$fa`, `$fs`.
 
 **Steps**
 
-1. **Sphere Implementation**
-   1. Implement `Sphere` using the exact algorithm from upstream OpenSCAD's [`SphereNode::createGeometry`](../openscad/src/core/primitives.cc):
-      - Use `$fn/$fa/$fs` to produce the same `num_fragments` and `num_rings` as OpenSCAD.  
-      - Generate vertices via latitude/longitude rings using the `(i + 0.5) / num_rings` polar offset and mirror the pole fan ordering.  
-      - Emit quads/triangles in the same winding order.  
-      - Maintain deterministic vertex ordering so downstream boolean ops and hashes match reference OpenSCAD output.  
-      - Add fixtures that compare small reference meshes (radius + resolution combos) against serialized data from upstream OpenSCAD to prove compatibility.  
-   - `from_ir` maps `GeometryNode::Sphere` errors back into diagnostics.
+1. **openscad-mesh Sphere**
+   - Implement `sphere()` using latitude/longitude tessellation matching OpenSCAD's algorithm:
+     - Use `$fn/$fa/$fs` to compute `num_fragments` and `num_rings`.  
+     - Generate vertices via latitude/longitude rings.  
+     - Emit triangles in correct winding order.  
+     - Maintain deterministic vertex ordering so downstream boolean ops produce consistent results.  
+   - Add fixtures that compare meshes against expected vertex/triangle counts for various radius + resolution combos.
 
 2. **Evaluator Context**
    - `$fn`, `$fa`, `$fs` are already tracked; the new `evaluator::resolution::compute_segments` helper converts those values into fragment counts exactly as described in the OpenSCAD docs (if `$fn>0` use it, else `ceil(min(360/$fa, 2πr/$fs))` with a minimum of five).  
-   - `Statement::Sphere` calls the helper so context assignments, per-call overrides, and defaults all produce deterministic `segments` passed into `GeometryNode::sphere`.
+   - `Statement::Sphere` calls the helper so context assignments, per-call overrides, and defaults all produce deterministic `segments` passed into `GeometryNode::Sphere`.
 
 3. **Tests**
-   - `libs/openscad-mesh` includes regression tests for sphere validation, bounding boxes, and subdivision scaling.  
+   - `libs/openscad-mesh` includes regression tests for sphere validation, bounding boxes, and resolution scaling.  
    - `libs/openscad-eval` contains unit tests for the resolution helper plus evaluator scenarios where `$fn`, `$fa`, `$fs` override each other.  
    - Doc tests capture the helper's formula for future reference.
 ### Task 5.1 – Transform Nodes & Application
@@ -620,31 +653,31 @@ Support `translate`, `rotate`, and `scale` transformations end-to-end.
 ### Task 5.2 – Cylinder Parity (OpenSCAD-Compatible)
 
 **Goal**  
-Implement `cylinder()` (including cones and inverted cones) exactly like OpenSCAD’s `CylinderNode::createGeometry`, honoring `$fn`, `$fa`, `$fs`, and all parameter permutations (`h`, `r`, `r1`, `r2`, `d`, `d1`, `d2`, `center`).
+Implement `cylinder()` (including cones and inverted cones) matching OpenSCAD's behavior, honoring `$fn`, `$fa`, `$fs`, and all parameter permutations (`h`, `r`, `r1`, `r2`, `d`, `d1`, `d2`, `center`).
 
 **Steps**
 
 1. **Evaluator Support**  
    - Extend the evaluator to parse cylinder statements into a new `GeometryNode::Cylinder { radius_bottom, radius_top, height, centered, segments, span }`.  
-   - Reuse `resolution::compute_segments` with `max(r1, r2)` so `$fn/$fa/$fs` match `CurveDiscretizer::getCircularSegmentCount`.  
+   - Reuse `resolution::compute_segments` with `max(r1, r2)` so `$fn/$fa/$fs` match OpenSCAD's fragment calculation.  
    - Validate parameters (positive height, non-negative radii, at least one non-zero radius) and emit diagnostics on failure—no silent fallbacks.
 
 2. **openscad-mesh Primitive**  
    - Create `libs/openscad-mesh/src/primitives/cylinder/{mod.rs, tests.rs}` (each <500 lines, documented).  
-   - Generate vertices exactly like OpenSCAD: two circles (or single apex) at `z1/z2` depending on `center`, with fragments determined above.  
-   - Build faces for frustum, cone, and inverted cone cases, matching winding/cap order (`num_fragments - i - 1` for bottom face) so outputs are compatible with upstream OpenSCAD.  
-   - Convert triangles/quads into a validated `Mesh`.
+   - Generate vertices: two circles (or single apex for cones) at `z1/z2` depending on `center`, with fragments determined above.  
+   - Build faces for frustum, cone, and inverted cone cases with correct winding.  
+   - Produce a valid mesh with proper triangle indices.
 
 3. **Integration & Tests**  
    - Wire `GeometryNode::Cylinder` through `from_ir` and add regression tests verifying:  
      1. Centered vs non-centered bounding boxes.  
      2. `$fn` overrides fragment counts; `$fa/$fs` fallback when `$fn=0`.  
-     3. Cones/inverted cones produce the expected vertex/triangle totals (matching OpenSCAD output for sample inputs).  
+     3. Cones/inverted cones produce the expected vertex/triangle totals.  
      4. Invalid parameters return explicit `MeshError` or evaluator diagnostics.
 
 **Acceptance Criteria**
 
-- `cylinder()` (and `cone` variants) produce meshes identical to OpenSCAD for representative `$fn/$fa/$fs` settings.  
+- `cylinder()` (and `cone` variants) produce meshes matching OpenSCAD for representative `$fn/$fa/$fs` settings.  
 - Evaluator + mesh tests cover parameter parsing, centering, cone cases, and fragment math; `cargo test -p openscad-mesh` passes.
 
 ---
@@ -663,7 +696,7 @@ Port OpenSCAD's `polyhedron(points, faces, convexity)` semantics into evaluator 
 
 2. **openscad-mesh Primitive**  
    - Add `libs/openscad-mesh/src/primitives/polyhedron/{mod.rs, tests.rs}` responsible for:  
-     - Copying vertices, reversing face winding, and splitting polygons >3 into triangles using the same fan strategy as OpenSCAD.  
+     - Copying vertices, reversing face winding, and splitting polygons >3 into triangles using fan triangulation.  
      - Validating topology (duplicate vertex indices, degenerate faces) and returning `MeshError::InvalidTopology` when issues arise.  
      - Preserving `convexity` metadata for downstream consumers.
 
@@ -683,7 +716,7 @@ Port OpenSCAD's `polyhedron(points, faces, convexity)` semantics into evaluator 
 ## Phase 6 – Boolean Operations & Target Validation (HIGH PRIORITY)
 
 > **Goal**: Complete the pipeline to render the target validation test case from `overview-plan.md §1.1`.
-> All implementations use best-in-class algorithms with OpenSCAD-compatible parameters and output.
+> All implementations use browser-safe algorithms (BSP trees for booleans) with OpenSCAD-compatible parameters and output.
 
 ---
 
@@ -805,7 +838,7 @@ Implement `rotate([x,y,z])` transformation.
 
 - `rotate([x,y,z])` produces correctly oriented geometry.
 - Normals are rotated along with vertices.
-- `Mesh::validate()` passes after rotation.
+- `validate()` passes after rotation.
 
 ---
 
@@ -839,14 +872,14 @@ Implement `scale([x,y,z])` transformation.
 
 - `scale([x,y,z])` correctly scales geometry.
 - Negative scales mirror correctly with proper winding.
-- `Mesh::validate()` passes after scaling.
+- `validate()` passes after scaling.
 
 ---
 
-### Task 6.2 – Union Boolean Operation
+### Task 6.2 – Union Boolean Operation (BSP Tree)
 
 **Goal**  
-Implement `union() { children }` using best-in-class boolean CSG algorithm.
+Implement `union() { children }` using BSP tree boolean union algorithm.
 
 **Steps**
 
@@ -859,8 +892,8 @@ Implement `union() { children }` using best-in-class boolean CSG algorithm.
    - `BooleanOp` enum: `Union`, `Difference`, `Intersection`.
 
 3. **openscad-mesh Boolean Operations**
-   - Create `libs/openscad-mesh/src/ops/boolean/{mod.rs, csg.rs, tests.rs}`.
-   - Implement:
+   - Create `libs/openscad-mesh/src/ops/boolean/{mod.rs, bsp.rs, polygon.rs, tests.rs}`.
+   - Implement using BSP tree algorithm (based on csg.js by Evan Wallace):
      ```rust
      /// Performs boolean union of two meshes.
      /// 
@@ -869,12 +902,11 @@ Implement `union() { children }` using best-in-class boolean CSG algorithm.
      /// let result = union(&cube, &sphere)?;
      /// assert!(result.validate());
      /// ```
-     pub fn union(a: &Mesh, b: &Mesh) -> Result<Mesh, MeshError>;
+     pub fn union(a: &Mesh, b: &Mesh) -> Result<Mesh, BooleanError>;
      
      /// Performs boolean union of multiple meshes.
-     pub fn union_all(meshes: &[Mesh]) -> Result<Mesh, MeshError>;
+     pub fn union_all(meshes: &[Mesh]) -> Result<Mesh, BooleanError>;
      ```
-   - Use best-in-class CSG algorithms.
    - Handle edge cases: empty inputs, disjoint meshes, coincident faces.
 
 4. **IR Bridge**
@@ -896,10 +928,10 @@ Implement `union() { children }` using best-in-class boolean CSG algorithm.
 
 ---
 
-### Task 6.3 – Difference Boolean Operation
+### Task 6.3 – Difference Boolean Operation (BSP Tree)
 
 **Goal**  
-Implement `difference() { a; b; c; }` using best-in-class boolean CSG algorithm.  
+Implement `difference() { a; b; c; }` using BSP tree boolean difference algorithm.  
 OpenSCAD semantics: `a - b - c - ...` (subtract all subsequent children from the first).
 
 **Steps**
@@ -911,7 +943,7 @@ OpenSCAD semantics: `a - b - c - ...` (subtract all subsequent children from the
    - Convert to `GeometryNode::Boolean { op: BooleanOp::Difference, children, span }`.
 
 3. **openscad-mesh Implementation**
-   - Add to `libs/openscad-mesh/src/ops/boolean/csg.rs`:
+   - Add to `libs/openscad-mesh/src/ops/boolean/mod.rs`:
      ```rust
      /// Boolean difference: a - b.
      /// 
@@ -920,12 +952,12 @@ OpenSCAD semantics: `a - b - c - ...` (subtract all subsequent children from the
      /// // Subtract sphere from cube
      /// let result = difference(&cube, &sphere)?;
      /// ```
-     pub fn difference(a: &Mesh, b: &Mesh) -> Result<Mesh, MeshError>;
+     pub fn difference(a: &Mesh, b: &Mesh) -> Result<Mesh, BooleanError>;
      
      /// Boolean difference: first - rest[0] - rest[1] - ...
-     pub fn difference_all(meshes: &[Mesh]) -> Result<Mesh, MeshError>;
+     pub fn difference_all(meshes: &[Mesh]) -> Result<Mesh, BooleanError>;
      ```
-   - Implement by iteratively subtracting each child from the accumulated result.
+   - Implement using BSP tree algorithm: `A - B = ~(~A | B)`.
 
 4. **IR Bridge**
    - Handle `BooleanOp::Difference` in `from_ir`.
@@ -934,20 +966,20 @@ OpenSCAD semantics: `a - b - c - ...` (subtract all subsequent children from the
    - Test: `difference() { cube(15, center=true); sphere(10); }` creates hollow cube.
    - Test: single child = identity (no subtraction).
    - Test: first child empty = error or empty result.
-   - Validate mesh is watertight after difference.
+   - Validate mesh is valid after difference.
 
 **Acceptance Criteria**
 
 - `difference()` correctly subtracts children from first child.
-- Output is valid mesh (watertight, correct normals).
+- Output is valid mesh (correct normals).
 - Edge cases handled with explicit errors.
 
 ---
 
-### Task 6.4 – Intersection Boolean Operation
+### Task 6.4 – Intersection Boolean Operation (BSP Tree)
 
 **Goal**  
-Implement `intersection() { children }` using best-in-class boolean CSG algorithm.
+Implement `intersection() { children }` using BSP tree boolean intersection algorithm.
 
 **Steps**
 
@@ -958,7 +990,7 @@ Implement `intersection() { children }` using best-in-class boolean CSG algorith
    - Convert to `GeometryNode::Boolean { op: BooleanOp::Intersection, children, span }`.
 
 3. **openscad-mesh Implementation**
-   - Add to `libs/openscad-mesh/src/ops/boolean/csg.rs`:
+   - Add to `libs/openscad-mesh/src/ops/boolean/mod.rs`:
      ```rust
      /// Boolean intersection of two meshes.
      /// 
@@ -967,11 +999,12 @@ Implement `intersection() { children }` using best-in-class boolean CSG algorith
      /// // Keep only overlapping volume
      /// let result = intersection(&cube, &sphere)?;
      /// ```
-     pub fn intersection(a: &Mesh, b: &Mesh) -> Result<Mesh, MeshError>;
+     pub fn intersection(a: &Mesh, b: &Mesh) -> Result<Mesh, BooleanError>;
      
      /// Boolean intersection of multiple meshes.
-     pub fn intersection_all(meshes: &[Mesh]) -> Result<Mesh, MeshError>;
+     pub fn intersection_all(meshes: &[Mesh]) -> Result<Mesh, BooleanError>;
      ```
+   - Implement using BSP tree algorithm: `A & B = ~(~A | ~B)`.
 
 4. **IR Bridge**
    - Handle `BooleanOp::Intersection` in `from_ir`.
@@ -1011,28 +1044,30 @@ Introduce robust predicates for geometric computations used by boolean operation
 
 ---
 
-### Task 6.6 – Boolean Operations Core (CSG Algorithm)
+### Task 6.6 – Boolean Operations Core (BSP Tree Algorithm)
 
 **Goal**  
-Implement the core CSG algorithm powering union/difference/intersection.
+Implement the core BSP tree algorithm powering union/difference/intersection.
 
 **Steps**
 
-1. **Broad Phase (Spatial Index)**
-   - Implement an R-Tree/BVH for triangle bounding boxes in `libs/openscad-mesh/src/ops/boolean/spatial.rs`.
-   - Use it to find candidate triangle pairs.
-   - Use `rayon` for parallel partitioning where appropriate.
+1. **BSP Tree Structure**
+   - Implement BSP tree in `libs/openscad-mesh/src/ops/boolean/bsp.rs`.
+   - Each node holds a plane and lists of coplanar, front, and back polygons.
+   - Use `rayon` for parallel operations where appropriate.
 
-2. **Exact Phase (Intersection)**
-   - Implement edge-plane and edge-edge intersection logic in `libs/openscad-mesh/src/ops/boolean/intersect.rs`.
-   - Use robust predicates for precision.
+2. **Polygon Operations**
+   - Implement polygon splitting in `libs/openscad-mesh/src/ops/boolean/polygon.rs`.
+   - Use robust predicates for plane classification.
 
-3. **Classification & Retriangulation**
-   - Classify triangles as inside/outside relative to other meshes.
-   - Re-triangulate intersection regions.
+3. **CSG Operations**
+   - `clip_to()`: Remove polygons on wrong side of BSP tree.
+   - `invert()`: Flip all polygon normals.
+   - `all_polygons()`: Collect all polygons from tree.
 
-4. **Sanitation**
-   - Remove degenerate triangles; ensure final mesh is watertight.
+4. **Mesh Reconstruction**
+   - Convert resulting polygons back to triangle mesh.
+   - Remove degenerate triangles; optimize vertex deduplication.
 
 **Acceptance Criteria**
 
@@ -1091,7 +1126,194 @@ Catch edge cases in boolean operations using property-based tests.
 
 ---
 
-## 7. Global Ongoing Tasks
+## Phase 7 – Extrusions & Advanced Operations
+
+> **Goal**: Implement extrusions, hull, minkowski, and offset operations using browser-safe algorithms.
+> All operations are CPU-bound (Rust/WASM); WebGL is used only for rendering.
+
+---
+
+### Task 7.1 – Linear Extrude
+
+**Goal**  
+Implement `linear_extrude()` to extrude 2D shapes along the Z axis.
+
+**OpenSCAD API (from `LinearExtrudeNode.cc`):**
+```openscad
+linear_extrude(height=100, v=[0,0,1], center=false, convexity=1, twist=0, slices=undef, segments=undef, scale=1)
+```
+
+**Steps**
+
+1. **Evaluator Support**
+   - Add `GeometryNode::LinearExtrude { height, direction, center, twist, slices, scale, children, span }`.
+   - Parse all parameters with OpenSCAD precedence rules.
+
+2. **openscad-mesh Implementation**
+   - Create `libs/openscad-mesh/src/ops/extrude/linear/{mod.rs, tests.rs}`.
+   - Algorithm:
+     - Take 2D polygon outline from child geometry.
+     - Generate slices at intervals along extrusion axis.
+     - Apply twist rotation per slice if `twist != 0`.
+     - Apply scale interpolation per slice if `scale != 1`.
+     - Generate side faces connecting slices.
+     - Cap top and bottom with triangulated polygons.
+
+3. **Tests**
+   - Test: `linear_extrude(10) square(5);` produces box mesh.
+   - Test: `linear_extrude(10, twist=90) square(5);` produces twisted box.
+   - Test: `linear_extrude(10, scale=0.5) circle(5);` produces cone.
+
+**Acceptance Criteria**
+
+- `linear_extrude()` works with all parameter combinations.
+- Mesh is valid and watertight.
+- Tests cover twist, scale, and centering.
+
+---
+
+### Task 7.2 – Rotate Extrude
+
+**Goal**  
+Implement `rotate_extrude()` to revolve 2D shapes around the Z axis.
+
+**OpenSCAD API (from `RotateExtrudeNode.cc`):**
+```openscad
+rotate_extrude(angle=360, start=180, convexity=2, $fn, $fa, $fs)
+```
+
+**Steps**
+
+1. **Evaluator Support**
+   - Add `GeometryNode::RotateExtrude { angle, start, convexity, children, span }`.
+
+2. **openscad-mesh Implementation**
+   - Create `libs/openscad-mesh/src/ops/extrude/rotate/{mod.rs, tests.rs}`.
+   - Algorithm:
+     - Take 2D polygon outline from child geometry.
+     - Rotate outline around Z axis at intervals determined by `$fn/$fa/$fs`.
+     - Generate quads/triangles connecting adjacent rotated outlines.
+     - Cap ends if `angle < 360`.
+
+3. **Tests**
+   - Test: `rotate_extrude() circle(5);` produces torus.
+   - Test: `rotate_extrude(angle=180) square([5,10]);` produces half-cylinder.
+
+**Acceptance Criteria**
+
+- `rotate_extrude()` handles full and partial rotations.
+- Fragment count respects `$fn/$fa/$fs`.
+- Mesh is valid.
+
+---
+
+### Task 7.3 – Hull (QuickHull Algorithm)
+
+**Goal**  
+Implement `hull()` to compute the convex hull of child geometries.
+
+**OpenSCAD API (from `CgalAdvNode.cc`):**
+```openscad
+hull() { children }
+```
+
+**Steps**
+
+1. **Evaluator Support**
+   - Add `GeometryNode::Hull { children, span }`.
+
+2. **openscad-mesh Implementation**
+   - Create `libs/openscad-mesh/src/ops/hull/{mod.rs, quickhull.rs, tests.rs}`.
+   - Algorithm: **QuickHull**
+     - Find extreme points to form initial simplex.
+     - For each face, find furthest point outside.
+     - Add point to hull, update faces.
+     - Repeat until no points outside.
+
+3. **Tests**
+   - Test: `hull() { cube(5); translate([10,0,0]) cube(5); }` produces elongated box.
+   - Test: `hull() { sphere(5); translate([10,0,0]) sphere(5); }` produces capsule shape.
+
+**Acceptance Criteria**
+
+- `hull()` produces valid convex mesh.
+- Works with any number of children.
+- QuickHull algorithm is O(n log n) average case.
+
+---
+
+### Task 7.4 – Minkowski (Convex Sum)
+
+**Goal**  
+Implement `minkowski()` for Minkowski sum of child geometries.
+
+**OpenSCAD API (from `CgalAdvNode.cc`):**
+```openscad
+minkowski(convexity=1) { children }
+```
+
+**Steps**
+
+1. **Evaluator Support**
+   - Add `GeometryNode::Minkowski { convexity, children, span }`.
+
+2. **openscad-mesh Implementation**
+   - Create `libs/openscad-mesh/src/ops/minkowski/{mod.rs, tests.rs}`.
+   - Algorithm: **Vertex-Face Iteration** (for convex shapes)
+     - For each vertex of shape A, translate shape B to that vertex.
+     - Compute union of all translated shapes.
+   - For non-convex shapes, decompose into convex parts first.
+
+3. **Tests**
+   - Test: `minkowski() { cube(10); sphere(2); }` produces rounded cube.
+   - Test: `minkowski() { square(10); circle(2); }` produces 2D rounded square.
+
+**Acceptance Criteria**
+
+- `minkowski()` works for convex shapes.
+- Produces valid mesh.
+- Performance note: This is inherently expensive; correctness over speed.
+
+---
+
+### Task 7.5 – Offset (2D Polygon Offset)
+
+**Goal**  
+Implement `offset()` for 2D polygon expansion/contraction.
+
+**OpenSCAD API (from `OffsetNode.cc`):**
+```openscad
+offset(r=1)           // Round joins (default)
+offset(delta=1)       // Miter joins
+offset(delta=1, chamfer=true)  // Square joins
+```
+
+**Steps**
+
+1. **Evaluator Support**
+   - Add `GeometryNode::Offset { amount, join_type, children, span }`.
+   - `join_type`: `Round`, `Miter`, `Square`.
+
+2. **openscad-mesh Implementation**
+   - Create `libs/openscad-mesh/src/ops/offset/{mod.rs, tests.rs}`.
+   - Algorithm: **Clipper2-style polygon offset**
+     - Offset each edge by the specified amount.
+     - Handle joins according to join type.
+     - Handle self-intersections.
+
+3. **Tests**
+   - Test: `offset(r=2) square(10);` produces rounded square outline.
+   - Test: `offset(delta=-2) square(10);` produces smaller square.
+
+**Acceptance Criteria**
+
+- `offset()` handles positive and negative values.
+- Join types produce correct geometry.
+- Works with complex polygons.
+
+---
+
+## 8. Global Ongoing Tasks
 
 These are continuous practices rather than one-time tasks:
 
