@@ -257,3 +257,69 @@ fn test_mesh_to_polygons_roundtrip() {
     // Should have same triangle count
     assert_eq!(result.triangle_count(), mesh.triangle_count());
 }
+
+// =============================================================================
+// HIGH-RESOLUTION STRESS TESTS
+// =============================================================================
+
+/// Tests that high-resolution boolean operations don't cause stack overflow.
+/// This simulates the user's OpenSCAD code with $fs=0.1, $fa=5.
+#[test]
+fn test_high_resolution_boolean_no_stack_overflow() {
+    use crate::primitives::sphere::create_sphere;
+    use crate::primitives::cylinder::create_cylinder;
+    
+    // High resolution (72 segments simulating $fa=5)
+    let segments = 72;
+    
+    // Create sphere and cube (intersection)
+    let sphere = create_sphere(10.0, segments).unwrap();
+    let cube = create_cube(DVec3::splat(15.0), true).unwrap();
+    
+    // Create cylinders for holes
+    let cyl1 = create_cylinder(20.0, 5.0, 5.0, true, segments).unwrap();
+    let mut cyl2 = create_cylinder(20.0, 5.0, 5.0, true, segments).unwrap();
+    let mut cyl3 = create_cylinder(20.0, 5.0, 5.0, true, segments).unwrap();
+    
+    // Rotate cylinders (simplified - just translate for test)
+    cyl2.translate(DVec3::new(0.1, 0.0, 0.0)); // Slight offset to simulate rotation
+    cyl3.translate(DVec3::new(0.0, 0.1, 0.0)); // Slight offset to simulate rotation
+    
+    // intersection(sphere, cube)
+    let intersected = intersection(&sphere, &cube).unwrap();
+    assert!(intersected.vertex_count() > 0, "Intersection should produce geometry");
+    
+    // union(cyl1, cyl2, cyl3)
+    let union1 = union(&cyl1, &cyl2).unwrap();
+    let holes = union(&union1, &cyl3).unwrap();
+    assert!(holes.vertex_count() > 0, "Union of cylinders should produce geometry");
+    
+    // difference(intersected, holes)
+    let result = difference(&intersected, &holes).unwrap();
+    
+    // The result should have geometry (not empty)
+    assert!(result.vertex_count() > 0, "Final difference should produce geometry");
+    assert!(result.triangle_count() > 0, "Final difference should have triangles");
+    
+    println!("High-res test: {} vertices, {} triangles", 
+             result.vertex_count(), result.triangle_count());
+}
+
+/// Tests deeply nested boolean operations with high-resolution meshes.
+#[test]
+fn test_deeply_nested_booleans() {
+    // Create 5 cubes in a row
+    let cubes: Vec<Mesh> = (0..5)
+        .map(|i| cube_at(DVec3::new(i as f64 * 0.8, 0.0, 0.0), 1.0))
+        .collect();
+    
+    // Union all cubes sequentially
+    let mut result = cubes[0].clone();
+    for cube in &cubes[1..] {
+        result = union(&result, cube).unwrap();
+    }
+    
+    // Should have combined geometry
+    assert!(result.vertex_count() > 0);
+    assert!(result.triangle_count() > 0);
+}

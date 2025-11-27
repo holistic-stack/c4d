@@ -136,20 +136,21 @@ pub fn node_to_mesh(node: &GeometryNode) -> Result<Mesh, MeshError> {
             let mut iter = meshes.into_iter();
             let mut result = iter.next().unwrap_or_default();
 
+            // Use Manifold backend for faster CSG operations
             match operation {
                 BooleanOperation::Union => {
                     for mesh in iter {
-                        result = boolean::union(&result, &mesh)?;
+                        result = boolean::manifold::union(&result, &mesh)?;
                     }
                 }
                 BooleanOperation::Difference => {
                     for mesh in iter {
-                        result = boolean::difference(&result, &mesh)?;
+                        result = boolean::manifold::difference(&result, &mesh)?;
                     }
                 }
                 BooleanOperation::Intersection => {
                     for mesh in iter {
-                        result = boolean::intersection(&result, &mesh)?;
+                        result = boolean::manifold::intersection(&result, &mesh)?;
                     }
                 }
             }

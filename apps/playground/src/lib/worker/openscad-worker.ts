@@ -120,6 +120,13 @@ async function compile(id: number, source: string): Promise<void> {
 		const cst = serializeTree(parseResult.tree);
 		const cstJson = JSON.stringify(cst);
 
+		// Debug: Log CST structure for the first few characters
+		console.log('[Worker] CST node types:', 
+			JSON.stringify(cst, (key, value) => 
+				key === 'type' || key === 'namedChildren' || key === 'text' ? value : 
+				(typeof value === 'object' && value !== null && 'type' in value ? { type: value.type } : undefined)
+			, 2).slice(0, 2000));
+
 		// Render mesh from CST
 		const mesh = wasmExports.render_from_cst(cstJson);
 		const compileTime = performance.now() - startTime;

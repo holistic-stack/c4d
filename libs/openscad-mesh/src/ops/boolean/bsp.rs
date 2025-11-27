@@ -16,6 +16,11 @@
 //! - `clip_to`: Remove polygons from this tree that are inside another tree
 //! - `invert`: Flip all polygons and swap front/back subtrees
 //! - `all_polygons`: Collect all polygons from the tree
+//!
+//! ## Stack Safety
+//!
+//! All operations use iterative algorithms with explicit stacks to avoid
+//! stack overflow in WASM environments where stack size is limited (~1MB).
 
 use super::polygon::Polygon;
 
@@ -43,7 +48,15 @@ pub struct BspNode {
 }
 
 impl BspNode {
-    /// Creates a new BSP tree from a list of polygons.
+    /// Creates a new BSP tree from polygons.
+    ///
+    /// Uses iterative construction to avoid stack overflow in WASM.
+    ///
+    /// # Algorithm Complexity
+    ///
+    /// - Uses O(N) iteration instead of O(N²) `remove(0)` operations
+    /// - `swap_remove` for O(1) splitter extraction
+    /// - Pre-allocated vectors to reduce reallocations
     ///
     /// # Arguments
     ///
@@ -53,86 +66,124 @@ impl BspNode {
     ///
     /// A BSP tree containing all the polygons.
     pub fn new(polygons: Vec<Polygon>) -> Self {
-        let mut node = Self {
+        let mut root = Self {
             polygons: Vec::new(),
             front: None,
             back: None,
         };
 
-        if !polygons.is_empty() {
-            node.build(polygons);
-        }
-
-        node
-    }
-
-    /// Builds the BSP tree from polygons.
-    ///
-    /// Uses the first polygon's plane as the splitting plane.
-    fn build(&mut self, mut polygons: Vec<Polygon>) {
         if polygons.is_empty() {
-            return;
+            return root;
         }
 
-        // Use first polygon's plane as splitting plane
-        let mut first_poly = polygons.remove(0);
-        let plane = match first_poly.plane() {
-            Some(p) => p,
-            None => {
-                // Degenerate polygon, try next
-                if !polygons.is_empty() {
-                    self.build(polygons);
-                }
-                return;
+        // Build iteratively using a work stack
+        // Each item is (node_ptr, polygons_to_add)
+        // We use raw pointers for the stack since we need mutable access
+        type WorkItem = (*mut BspNode, Vec<Polygon>);
+        let mut stack: Vec<WorkItem> = vec![(&mut root as *mut BspNode, polygons)];
+
+        while let Some((node_ptr, polys)) = stack.pop() {
+            if polys.is_empty() {
+                continue;
             }
-        };
 
-        // Add first polygon to coplanar list
-        self.polygons.push(first_poly);
+            // Safety: we control all pointers and they point to valid nodes
+            let node = unsafe { &mut *node_ptr };
 
-        let mut front_polys = Vec::new();
-        let mut back_polys = Vec::new();
+            // Convert to owned vec for manipulation
+            let mut polys = polys;
 
-        // Classify and split remaining polygons
-        for poly in polygons {
-            let (front, back) = poly.split(&plane);
-            front_polys.extend(front);
-            back_polys.extend(back);
+            // Find first valid polygon with a plane - simple O(N) scan
+            // Note: More sophisticated splitter selection (sampling heuristic) was tested
+            // but the overhead outweighed benefits for typical mesh sizes
+            let splitter_idx = polys.iter().position(|p| p.get_plane().is_some());
+
+            // No valid splitter found - skip this node
+            let splitter_idx = match splitter_idx {
+                Some(idx) => idx,
+                None => continue,
+            };
+            
+            // Use swap_remove for O(1) removal of splitter polygon
+            let mut splitter = polys.swap_remove(splitter_idx);
+            let plane = match splitter.plane() {
+                Some(p) => p,
+                None => continue, // Should not happen since we checked above
+            };
+            node.polygons.push(splitter);
+
+            // Pre-allocate with estimated capacity to reduce reallocations
+            let estimated_size = polys.len() / 2 + 1;
+            let mut front_polys = Vec::with_capacity(estimated_size);
+            let mut back_polys = Vec::with_capacity(estimated_size);
+
+            // Classify and split remaining polygons - O(N) iteration
+            for poly in polys {
+                let (front, back) = poly.split(&plane);
+                front_polys.extend(front);
+                back_polys.extend(back);
+            }
+
+            // Create child nodes and add to stack
+            if !front_polys.is_empty() {
+                node.front = Some(Box::new(BspNode {
+                    polygons: Vec::new(),
+                    front: None,
+                    back: None,
+                }));
+                if let Some(ref mut front) = node.front {
+                    stack.push((front.as_mut() as *mut BspNode, front_polys));
+                }
+            }
+
+            if !back_polys.is_empty() {
+                node.back = Some(Box::new(BspNode {
+                    polygons: Vec::new(),
+                    front: None,
+                    back: None,
+                }));
+                if let Some(ref mut back) = node.back {
+                    stack.push((back.as_mut() as *mut BspNode, back_polys));
+                }
+            }
         }
 
-        // Recursively build subtrees
-        if !front_polys.is_empty() {
-            self.front = Some(Box::new(BspNode::new(front_polys)));
-        }
-
-        if !back_polys.is_empty() {
-            self.back = Some(Box::new(BspNode::new(back_polys)));
-        }
+        root
     }
 
     /// Inverts this BSP tree (flips all polygons and swaps subtrees).
     ///
+    /// Uses iterative traversal to avoid stack overflow in WASM.
     /// Used for implementing difference and intersection operations.
     pub fn invert(&mut self) {
-        // Flip all polygons at this node
-        for poly in &mut self.polygons {
-            poly.flip();
-        }
+        // Use iterative traversal with explicit stack
+        let mut stack: Vec<*mut BspNode> = vec![self as *mut BspNode];
 
-        // Swap front and back subtrees
-        std::mem::swap(&mut self.front, &mut self.back);
+        while let Some(node_ptr) = stack.pop() {
+            // Safety: we control all pointers and they point to valid nodes
+            let node = unsafe { &mut *node_ptr };
 
-        // Recursively invert subtrees
-        if let Some(ref mut front) = self.front {
-            front.invert();
-        }
-        if let Some(ref mut back) = self.back {
-            back.invert();
+            // Flip all polygons at this node
+            for poly in &mut node.polygons {
+                poly.flip();
+            }
+
+            // Swap front and back subtrees
+            std::mem::swap(&mut node.front, &mut node.back);
+
+            // Add children to stack
+            if let Some(ref mut front) = node.front {
+                stack.push(front.as_mut() as *mut BspNode);
+            }
+            if let Some(ref mut back) = node.back {
+                stack.push(back.as_mut() as *mut BspNode);
+            }
         }
     }
 
     /// Clips polygons to this BSP tree.
     ///
+    /// Uses iterative traversal to avoid stack overflow in WASM.
     /// Removes parts of polygons that are inside the solid represented
     /// by this tree.
     ///
@@ -148,94 +199,173 @@ impl BspNode {
             return polygons;
         }
 
-        // Get splitting plane from first polygon
-        let plane = match self.polygons[0].get_plane() {
-            Some(p) => p,
-            None => return polygons,
-        };
+        // Work item: (node, front_polygons, back_polygons, is_processing_front)
+        // We process nodes iteratively, tracking front/back polygons separately
+        
+        // Use a simpler approach: process one level at a time
+        let mut result = Vec::new();
+        
+        // Stack of (node_ref, polygons_to_clip)
+        let mut stack: Vec<(&BspNode, Vec<Polygon>)> = vec![(self, polygons)];
+        
+        while let Some((node, polys)) = stack.pop() {
+            if polys.is_empty() {
+                continue;
+            }
+            
+            if node.polygons.is_empty() {
+                result.extend(polys);
+                continue;
+            }
 
-        let mut front_polys = Vec::new();
-        let mut back_polys = Vec::new();
+            // Get splitting plane from first polygon
+            let plane = match node.polygons[0].get_plane() {
+                Some(p) => p,
+                None => {
+                    result.extend(polys);
+                    continue;
+                }
+            };
 
-        for poly in polygons {
-            let (front, back) = poly.split(&plane);
-            front_polys.extend(front);
-            back_polys.extend(back);
+            let mut front_polys = Vec::new();
+            let mut back_polys = Vec::new();
+
+            for poly in polys {
+                let (front, back) = poly.split(&plane);
+                front_polys.extend(front);
+                back_polys.extend(back);
+            }
+
+            // Process front polygons
+            if let Some(ref front) = node.front {
+                stack.push((front.as_ref(), front_polys));
+            } else {
+                result.extend(front_polys);
+            }
+
+            // Process back polygons (or discard if no back tree)
+            if let Some(ref back) = node.back {
+                stack.push((back.as_ref(), back_polys));
+            }
+            // If no back tree, back polygons are inside solid - discard them
         }
 
-        // Recursively clip front polygons
-        if let Some(ref front) = self.front {
-            front_polys = front.clip_polygons(front_polys);
-        }
-
-        // Recursively clip back polygons (or discard if no back tree)
-        if let Some(ref back) = self.back {
-            back_polys = back.clip_polygons(back_polys);
-        } else {
-            // No back tree means back polygons are inside solid - discard them
-            back_polys.clear();
-        }
-
-        // Combine results
-        front_polys.extend(back_polys);
-        front_polys
+        result
     }
 
     /// Clips this tree's polygons to another tree.
     ///
+    /// Uses iterative traversal to avoid stack overflow in WASM.
     /// Removes parts of this tree's polygons that are inside the other tree.
     ///
     /// # Arguments
     ///
     /// * `other` - The tree to clip against
     pub fn clip_to(&mut self, other: &BspNode) {
-        self.polygons = other.clip_polygons(std::mem::take(&mut self.polygons));
+        // Use iterative traversal with explicit stack
+        let mut stack: Vec<*mut BspNode> = vec![self as *mut BspNode];
 
-        if let Some(ref mut front) = self.front {
-            front.clip_to(other);
-        }
-        if let Some(ref mut back) = self.back {
-            back.clip_to(other);
+        while let Some(node_ptr) = stack.pop() {
+            // Safety: we control all pointers and they point to valid nodes
+            let node = unsafe { &mut *node_ptr };
+
+            node.polygons = other.clip_polygons(std::mem::take(&mut node.polygons));
+
+            // Add children to stack
+            if let Some(ref mut front) = node.front {
+                stack.push(front.as_mut() as *mut BspNode);
+            }
+            if let Some(ref mut back) = node.back {
+                stack.push(back.as_mut() as *mut BspNode);
+            }
         }
     }
 
     /// Collects all polygons from this tree.
     ///
+    /// Uses iterative traversal to avoid stack overflow in WASM.
+    ///
     /// # Returns
     ///
     /// A vector containing all polygons in the tree.
     pub fn all_polygons(&self) -> Vec<Polygon> {
-        let mut result = self.polygons.clone();
+        let mut result = Vec::new();
+        let mut stack: Vec<&BspNode> = vec![self];
 
-        if let Some(ref front) = self.front {
-            result.extend(front.all_polygons());
-        }
-        if let Some(ref back) = self.back {
-            result.extend(back.all_polygons());
+        while let Some(node) = stack.pop() {
+            result.extend(node.polygons.iter().cloned());
+
+            if let Some(ref front) = node.front {
+                stack.push(front.as_ref());
+            }
+            if let Some(ref back) = node.back {
+                stack.push(back.as_ref());
+            }
         }
 
         result
     }
 
     /// Returns the number of polygons in this tree.
+    ///
+    /// Uses iterative traversal to avoid stack overflow in WASM.
+    #[allow(dead_code)]
     pub fn polygon_count(&self) -> usize {
-        let mut count = self.polygons.len();
+        let mut count = 0;
+        let mut stack: Vec<&BspNode> = vec![self];
 
-        if let Some(ref front) = self.front {
-            count += front.polygon_count();
-        }
-        if let Some(ref back) = self.back {
-            count += back.polygon_count();
+        while let Some(node) = stack.pop() {
+            count += node.polygons.len();
+
+            if let Some(ref front) = node.front {
+                stack.push(front.as_ref());
+            }
+            if let Some(ref back) = node.back {
+                stack.push(back.as_ref());
+            }
         }
 
         count
     }
 
     /// Returns the depth of this tree.
+    ///
+    /// Uses iterative traversal to avoid stack overflow in WASM.
+    #[allow(dead_code)]
     pub fn depth(&self) -> usize {
-        let front_depth = self.front.as_ref().map_or(0, |f| f.depth());
-        let back_depth = self.back.as_ref().map_or(0, |b| b.depth());
-        1 + front_depth.max(back_depth)
+        let mut max_depth = 0;
+        // Stack of (node, current_depth)
+        let mut stack: Vec<(&BspNode, usize)> = vec![(self, 1)];
+
+        while let Some((node, depth)) = stack.pop() {
+            max_depth = max_depth.max(depth);
+
+            if let Some(ref front) = node.front {
+                stack.push((front.as_ref(), depth + 1));
+            }
+            if let Some(ref back) = node.back {
+                stack.push((back.as_ref(), depth + 1));
+            }
+        }
+
+        max_depth
+    }
+}
+
+impl Drop for BspNode {
+    fn drop(&mut self) {
+        // Iterative drop to avoid stack overflow
+        let mut stack = Vec::new();
+        
+        if let Some(front) = self.front.take() { stack.push(front); }
+        if let Some(back) = self.back.take() { stack.push(back); }
+        
+        while let Some(mut node) = stack.pop() {
+            // Move children to stack before node is dropped
+            if let Some(front) = node.front.take() { stack.push(front); }
+            if let Some(back) = node.back.take() { stack.push(back); }
+            // node is dropped here, but since children are None, it won't recurse
+        }
     }
 }
 

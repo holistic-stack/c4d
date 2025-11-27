@@ -118,6 +118,9 @@ pub fn render_from_cst(cst_json: &str) -> Result<MeshHandle, JsValue> {
             diagnostics::build_error_payload(vec![diagnostic])
         })?;
 
+    // Performance timing
+    let start_time = js_sys::Date::now();
+
     // Parse CST to statements
     let statements = openscad_ast::parse_from_cst(&cst)
         .map_err(|e| {
@@ -128,22 +131,32 @@ pub fn render_from_cst(cst_json: &str) -> Result<MeshHandle, JsValue> {
             );
             diagnostics::build_error_payload(vec![diagnostic])
         })?;
-
+    let parse_time = js_sys::Date::now() - start_time;
 
     // Evaluate statements
+    let eval_start = js_sys::Date::now();
     let mut ctx = openscad_eval::EvaluationContext::new();
     let geometry = openscad_eval::evaluator::evaluate_statements(&statements, &mut ctx)
         .map_err(|e| {
             let diagnostic = diagnostics::from_eval_error(&e);
             diagnostics::build_error_payload(vec![diagnostic])
         })?;
+    let eval_time = js_sys::Date::now() - eval_start;
 
     // Convert geometry to mesh
+    let mesh_start = js_sys::Date::now();
     let mesh = openscad_mesh::from_ir::geometry_to_mesh(&geometry)
         .map_err(|e| {
             let diagnostic = diagnostics::from_mesh_error(&e);
             diagnostics::build_error_payload(vec![diagnostic])
         })?;
+    let mesh_time = js_sys::Date::now() - mesh_start;
+
+    // Log performance breakdown
+    web_sys::console::log_1(&format!(
+        "[WASM] Performance: parse={:.0}ms, eval={:.0}ms, mesh={:.0}ms, total={:.0}ms",
+        parse_time, eval_time, mesh_time, js_sys::Date::now() - start_time
+    ).into());
 
     Ok(MeshHandle::from_mesh(mesh))
 }

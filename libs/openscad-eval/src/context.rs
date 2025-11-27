@@ -17,7 +17,9 @@
 //! | `$vpd` | f64 | Viewport camera distance | 140.0 |
 //! | `$vpf` | f64 | Viewport field of view (degrees) | 22.5 |
 
+use crate::value::Value;
 use config::constants::{DEFAULT_FA, DEFAULT_FN, DEFAULT_FS};
+use openscad_ast::{Expression, Statement};
 use std::collections::HashMap;
 
 /// Default viewport rotation: [55, 0, 25] degrees (OpenSCAD standard)
@@ -36,12 +38,16 @@ pub const DEFAULT_VPF: f64 = 22.5;
 /// In browser playground, we're always in preview mode.
 pub const DEFAULT_PREVIEW: bool = true;
 
+/// Maximum recursion depth for module calls to prevent stack overflow
+pub const MAX_RECURSION_DEPTH: usize = 2000;
+
 /// Evaluation context for OpenSCAD programs.
 ///
 /// Tracks:
 /// - User-defined variables
 /// - Special variables ($fn, $fa, $fs)
 /// - Scope stack for nested blocks
+/// - Recursion depth
 ///
 /// # Example
 ///
@@ -55,30 +61,47 @@ pub const DEFAULT_PREVIEW: bool = true;
 /// Stored module definition for user-defined modules.
 #[derive(Debug, Clone)]
 pub struct ModuleDefinition {
-    /// Parameter names with optional default values
-    pub parameters: Vec<(String, Option<f64>)>,
+    /// Parameter names with optional default values (expressions to be evaluated at call time)
+    pub parameters: Vec<(String, Option<Expression>)>,
     /// Module body statements
-    pub body: Vec<openscad_ast::Statement>,
+    pub body: Vec<Statement>,
 }
 
 /// Stored function definition for user-defined functions.
 /// Functions return a value computed from an expression.
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
-    /// Parameter names with optional default values
-    pub parameters: Vec<(String, Option<f64>)>,
+    /// Parameter names with optional default values (expressions to be evaluated at call time)
+    pub parameters: Vec<(String, Option<Expression>)>,
     /// The expression that computes the return value
-    pub body: openscad_ast::Expression,
+    pub body: Expression,
+}
+
+/// A single scope frame containing variables and optional children reference.
+#[derive(Debug, Clone, Default)]
+pub struct Scope {
+    pub variables: HashMap<String, Value>,
+    /// Index into children_stack for the module associated with this scope.
+    /// None if this scope is not a module scope (e.g. for loop, or global).
+    pub children_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EvaluationContext {
     /// Stack of variable scopes
-    scopes: Vec<HashMap<String, f64>>,
+    scopes: Vec<Scope>,
     /// User-defined modules
     modules: HashMap<String, ModuleDefinition>,
     /// User-defined functions
     functions: HashMap<String, FunctionDefinition>,
+    /// Current recursion depth
+    pub recursion_depth: usize,
+    /// Maximum recursion depth allowed
+    pub max_recursion_depth: usize,
+    /// Stack of module names being called for error reporting
+    pub call_stack: Vec<String>,
+    /// Stack of children for module calls: (Statements, ScopeDepth)
+    pub children_stack: Vec<(Vec<Statement>, usize)>,
     /// $fn - fragment count override
     fn_value: f64,
     /// $fa - minimum fragment angle (degrees)
@@ -121,9 +144,13 @@ impl EvaluationContext {
     /// - $preview = true (preview mode)
     pub fn new() -> Self {
         Self {
-            scopes: vec![HashMap::new()],
+            scopes: vec![Scope::default()],
             modules: HashMap::new(),
             functions: HashMap::new(),
+            recursion_depth: 0,
+            max_recursion_depth: MAX_RECURSION_DEPTH,
+            call_stack: Vec::new(),
+            children_stack: Vec::new(),
             fn_value: DEFAULT_FN,
             fa_value: DEFAULT_FA,
             fs_value: DEFAULT_FS,
@@ -145,6 +172,11 @@ impl EvaluationContext {
     /// Gets a user-defined module by name.
     pub fn get_module(&self, name: &str) -> Option<&ModuleDefinition> {
         self.modules.get(name)
+    }
+
+    /// Returns a list of registered module names.
+    pub fn module_names(&self) -> Vec<String> {
+        self.modules.keys().cloned().collect()
     }
 
     /// Registers a user-defined function.
@@ -284,50 +316,54 @@ impl EvaluationContext {
     }
 
     /// Sets a variable in the current scope.
-    /// Special variables ($fn, $fa, $fs, $vpd, $vpf) are stored separately.
-    /// Vector special variables ($vpr, $vpt) must be set via dedicated methods.
-    pub fn set_variable(&mut self, name: &str, value: f64) {
+    /// Special variables ($fn, $fa, $fs, $vpd, $vpf) are stored separately if passed as numbers.
+    /// But general variables are stored as Value.
+    pub fn set_variable(&mut self, name: &str, value: Value) {
         // Handle scalar special variables
+        // We try to extract f64 for special variables that require it
         match name {
-            "$fn" => self.fn_value = value,
-            "$fa" => self.fa_value = value,
-            "$fs" => self.fs_value = value,
-            "$vpd" => self.vpd_value = value,
-            "$vpf" => self.vpf_value = value,
+            "$fn" => if let Some(v) = value.as_f64() { self.fn_value = v; },
+            "$fa" => if let Some(v) = value.as_f64() { self.fa_value = v; },
+            "$fs" => if let Some(v) = value.as_f64() { self.fs_value = v; },
+            "$vpd" => if let Some(v) = value.as_f64() { self.vpd_value = v; },
+            "$vpf" => if let Some(v) = value.as_f64() { self.vpf_value = v; },
             _ => {
                 if let Some(scope) = self.scopes.last_mut() {
-                    scope.insert(name.to_string(), value);
+                    scope.variables.insert(name.to_string(), value);
                 }
             }
         }
     }
 
     /// Gets a variable value, searching from innermost to outermost scope.
-    /// For vector special variables ($vpr, $vpt), only the first component is returned.
-    /// For boolean special variables ($preview), returns 1.0 for true, 0.0 for false.
-    /// Use the dedicated accessor methods for full vector/boolean access.
-    pub fn get_variable(&self, name: &str) -> Option<f64> {
+    pub fn get_variable(&self, name: &str) -> Option<Value> {
         // Handle special variables
         match name {
-            "$fn" => return Some(self.fn_value),
-            "$fa" => return Some(self.fa_value),
-            "$fs" => return Some(self.fs_value),
-            "$t" => return Some(self.t_value),
-            "$children" => return Some(self.children_count as f64),
-            "$vpd" => return Some(self.vpd_value),
-            "$vpf" => return Some(self.vpf_value),
-            // Boolean as f64: 1.0 for true, 0.0 for false
-            "$preview" => return Some(if self.preview_value { 1.0 } else { 0.0 }),
-            // Return first component for vector variables (for scalar context)
-            "$vpr" => return Some(self.vpr_value[0]),
-            "$vpt" => return Some(self.vpt_value[0]),
+            "$fn" => return Some(Value::Number(self.fn_value)),
+            "$fa" => return Some(Value::Number(self.fa_value)),
+            "$fs" => return Some(Value::Number(self.fs_value)),
+            "$t" => return Some(Value::Number(self.t_value)),
+            "$children" => return Some(Value::Number(self.get_children_count() as f64)),
+            "$vpd" => return Some(Value::Number(self.vpd_value)),
+            "$vpf" => return Some(Value::Number(self.vpf_value)),
+            "$preview" => return Some(Value::Boolean(self.preview_value)),
+            "$vpr" => return Some(Value::Vector(vec![
+                Value::Number(self.vpr_value[0]),
+                Value::Number(self.vpr_value[1]),
+                Value::Number(self.vpr_value[2])
+            ])),
+            "$vpt" => return Some(Value::Vector(vec![
+                Value::Number(self.vpt_value[0]),
+                Value::Number(self.vpt_value[1]),
+                Value::Number(self.vpt_value[2])
+            ])),
             _ => {}
         }
 
         // Search scopes from innermost to outermost
         for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.get(name) {
-                return Some(*value);
+            if let Some(value) = scope.variables.get(name) {
+                return Some(value.clone());
             }
         }
         None
@@ -335,7 +371,50 @@ impl EvaluationContext {
 
     /// Pushes a new scope onto the stack.
     pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
+        self.scopes.push(Scope::default());
+    }
+
+    /// Pushes a new module scope with associated children index.
+    pub fn push_module_scope(&mut self, children_index: Option<usize>) {
+        self.scopes.push(Scope {
+            variables: HashMap::new(),
+            children_index,
+        });
+    }
+
+    /// Temporarily removes scopes above a certain depth.
+    /// Used for children evaluation where we want to simulate the call site scope.
+    /// Returns the removed scopes.
+    pub fn temporary_pop_scopes(&mut self, keep_depth: usize) -> Vec<Scope> {
+        if keep_depth >= self.scopes.len() {
+            return Vec::new();
+        }
+        self.scopes.split_off(keep_depth)
+    }
+
+    /// Restores previously popped scopes.
+    pub fn restore_scopes(&mut self, mut scopes: Vec<Scope>) {
+        self.scopes.append(&mut scopes);
+    }
+
+    /// Helper to get children count for the current context
+    fn get_children_count(&self) -> usize {
+        if let Some(idx) = self.get_current_children_index() {
+             if let Some((children, _)) = self.children_stack.get(idx) {
+                 return children.len();
+             }
+        }
+        0
+    }
+    
+    /// Finds the children index for the current scope context
+    pub fn get_current_children_index(&self) -> Option<usize> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(idx) = scope.children_index {
+                return Some(idx);
+            }
+        }
+        None
     }
 
     /// Pops the current scope from the stack.
@@ -373,16 +452,16 @@ mod tests {
     #[test]
     fn test_set_variable_special() {
         let mut ctx = EvaluationContext::new();
-        ctx.set_variable("$fn", 64.0);
+        ctx.set_variable("$fn", Value::Number(64.0));
         assert_eq!(ctx.fn_value(), 64.0);
-        assert_eq!(ctx.get_variable("$fn"), Some(64.0));
+        assert_eq!(ctx.get_variable("$fn"), Some(Value::Number(64.0)));
     }
 
     #[test]
     fn test_set_variable_regular() {
         let mut ctx = EvaluationContext::new();
-        ctx.set_variable("x", 10.0);
-        assert_eq!(ctx.get_variable("x"), Some(10.0));
+        ctx.set_variable("x", Value::Number(10.0));
+        assert_eq!(ctx.get_variable("x"), Some(Value::Number(10.0)));
     }
 
     #[test]
@@ -400,23 +479,23 @@ mod tests {
     #[test]
     fn test_scope_shadowing() {
         let mut ctx = EvaluationContext::new();
-        ctx.set_variable("x", 10.0);
+        ctx.set_variable("x", Value::Number(10.0));
         
         ctx.push_scope();
-        ctx.set_variable("x", 20.0);
-        assert_eq!(ctx.get_variable("x"), Some(20.0));
+        ctx.set_variable("x", Value::Number(20.0));
+        assert_eq!(ctx.get_variable("x"), Some(Value::Number(20.0)));
         
         ctx.pop_scope();
-        assert_eq!(ctx.get_variable("x"), Some(10.0));
+        assert_eq!(ctx.get_variable("x"), Some(Value::Number(10.0)));
     }
 
     #[test]
     fn test_scope_inheritance() {
         let mut ctx = EvaluationContext::new();
-        ctx.set_variable("x", 10.0);
+        ctx.set_variable("x", Value::Number(10.0));
         
         ctx.push_scope();
         // Inner scope can see outer scope variables
-        assert_eq!(ctx.get_variable("x"), Some(10.0));
+        assert_eq!(ctx.get_variable("x"), Some(Value::Number(10.0)));
     }
 }

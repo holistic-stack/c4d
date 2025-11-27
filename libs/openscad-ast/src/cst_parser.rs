@@ -21,7 +21,7 @@
 //! let statements = parse_from_cst(&cst)?;
 //! ```
 
-use crate::ast::{Argument, BinaryOp, Expression, Modifier, Parameter, Statement};
+use crate::ast::{Argument, BinaryOp, Expression, Modifier, Statement};
 use crate::cst::SerializedNode;
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::span::Span;
@@ -367,7 +367,31 @@ fn parse_node(node: &SerializedNode) -> Result<Option<Statement>, CstParseError>
             Ok(Some(Statement::FunctionDefinition { name, parameters, body, span }))
         }
 
-        // Skip these
+        // Echo statement: echo(args) statement
+        // OpenSCAD's echo() prints to console and continues with the statement
+        "echo_statement" => {
+            // Parse the following statement if present
+            if let Some(stmt_node) = node.child_by_field("statement") {
+                parse_node(&stmt_node)
+            } else {
+                // Echo without a following statement is a no-op
+                Ok(None)
+            }
+        }
+
+        // Assert statement: assert(args) statement
+        // OpenSCAD's assert() checks conditions and continues with the statement
+        "assert_statement" => {
+            // Parse the following statement if present
+            if let Some(stmt_node) = node.child_by_field("statement") {
+                parse_node(&stmt_node)
+            } else {
+                // Assert without a following statement is a no-op
+                Ok(None)
+            }
+        }
+
+        // Skip these - they don't produce geometry
         "source_file" | "comment" | "line_comment" | "block_comment" | ";" => Ok(None),
 
         // Try to recurse into children
@@ -572,11 +596,7 @@ fn convert_module_call_to_statement(
             children: flattened_children,
             span,
         })),
-        "minkowski" => Ok(Some(Statement::Minkowski {
-            convexity: 1,
-            children: flattened_children,
-            span,
-        })),
+        "minkowski" => parse_minkowski_call(arguments, flattened_children, span),
 
         // Extrusions
         "linear_extrude" => parse_linear_extrude_call(arguments, flattened_children, span),
@@ -699,11 +719,6 @@ fn parse_arguments_from_children(children: &[SerializedNode]) -> Result<Vec<Argu
     Ok(arguments)
 }
 
-/// Helper to check if an argument is positional.
-fn is_positional(arg: &Argument) -> bool {
-    arg.name.is_none()
-}
-
 /// Helper to get named argument value.
 fn get_named_arg<'a>(args: &'a [Argument], name: &str) -> Option<&'a Expression> {
     args.iter()
@@ -717,9 +732,32 @@ fn get_positional_arg(args: &[Argument]) -> Option<&Expression> {
 }
 
 /// Parses an expression node.
+///
+/// Handles all expression types from the OpenSCAD grammar including:
+/// - Literals: number, boolean, string, undef
+/// - Variables: identifier, special_variable
+/// - Compound: list, range
+/// - Operations: unary_expression, binary_expression, ternary_expression
+/// - Calls: function_call
+/// - Wrappers: literal, expression (supertypes that delegate to children)
 fn parse_expression(node: &SerializedNode) -> Result<Expression, CstParseError> {
     match node.node_type.as_str() {
-        "number" | "integer" | "decimal" => {
+        // Wrapper types (supertypes) - delegate to first named child
+        // The grammar defines these as supertypes that wrap their actual content
+        "literal" | "expression" => {
+            if let Some(child) = node.named_children.first() {
+                parse_expression(child)
+            } else {
+                Err(CstParseError::InvalidValue(format!(
+                    "Empty {} node",
+                    node.node_type
+                )))
+            }
+        }
+        // Undef literal - OpenSCAD's null/undefined value
+        "undef" => Ok(Expression::Undef),
+        // Numeric literals (integer, float, or generic number)
+        "number" | "integer" | "decimal" | "float" => {
             let value = node
                 .text
                 .parse::<f64>()
@@ -844,6 +882,75 @@ fn parse_expression(node: &SerializedNode) -> Result<Expression, CstParseError> 
             }
             
             Ok(Expression::FunctionCall { name, arguments })
+        }
+        // Ternary expression: condition ? then : else
+        "ternary_expression" => {
+            let condition = node.child_by_field("condition")
+                .map(parse_expression)
+                .transpose()?
+                .unwrap_or(Expression::Boolean(false));
+            let then_expr = node.child_by_field("consequence")
+                .map(parse_expression)
+                .transpose()?
+                .unwrap_or(Expression::Undef);
+            let else_expr = node.child_by_field("alternative")
+                .map(parse_expression)
+                .transpose()?
+                .unwrap_or(Expression::Undef);
+            Ok(Expression::Ternary {
+                condition: Box::new(condition),
+                then_expr: Box::new(then_expr),
+                else_expr: Box::new(else_expr),
+            })
+        }
+        // Index expression: array[index]
+        "index_expression" => {
+            let array = node.child_by_field("value")
+                .map(parse_expression)
+                .transpose()?
+                .unwrap_or(Expression::Undef);
+            // The index is typically the second named child (after the value)
+            let index = node.named_children.get(1)
+                .map(parse_expression)
+                .transpose()?
+                .unwrap_or(Expression::Number(0.0));
+            Ok(Expression::Index {
+                array: Box::new(array),
+                index: Box::new(index),
+            })
+        }
+        // Dot index expression: object.field - treat as index with string
+        "dot_index_expression" => {
+            let value = node.child_by_field("value")
+                .map(parse_expression)
+                .transpose()?
+                .unwrap_or(Expression::Undef);
+            let index_name = node.child_by_field("index")
+                .map(|n| n.text.clone())
+                .unwrap_or_default();
+            Ok(Expression::Index {
+                array: Box::new(value),
+                index: Box::new(Expression::String(index_name)),
+            })
+        }
+        // Let expression: let(assignments) expression
+        "let_expression" => {
+            // For now, parse the inner expression - full let support would need scope handling
+            if let Some(body) = node.child_by_field("body") {
+                parse_expression(&body)
+            } else if let Some(child) = node.named_children.last() {
+                parse_expression(child)
+            } else {
+                Ok(Expression::Undef)
+            }
+        }
+        // Assert/Echo expressions - return the trailing expression if present
+        "assert_expression" | "echo_expression" => {
+            if let Some(expr) = node.child_by_field("expression") {
+                parse_expression(&expr)
+            } else {
+                Ok(Expression::Undef)
+            }
         }
         _ => Err(CstParseError::Unsupported(format!("Expression type: {}", node.node_type))),
     }
@@ -1245,15 +1352,6 @@ fn parse_bool_arg(expr: &Expression) -> Result<bool, CstParseError> {
     }
 }
 
-/// Parses a size argument (number or [x,y,z]).
-fn parse_size_arg(expr: &Expression) -> Result<DVec3, CstParseError> {
-    match expr {
-        Expression::Number(n) => Ok(DVec3::splat(*n)),
-        Expression::Vector(items) => parse_vec3_from_list(items),
-        _ => Err(CstParseError::InvalidValue("Expected size".to_string())),
-    }
-}
-
 /// Parses a vec3 argument.
 fn parse_vec3_arg(expr: &Expression) -> Result<DVec3, CstParseError> {
     match expr {
@@ -1619,6 +1717,13 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_float_expression() {
+        let node = test_node("float", "3.14159");
+        let expr = parse_expression(&node).unwrap();
+        assert!(matches!(expr, Expression::Number(n) if (n - 3.14159).abs() < 0.00001));
+    }
+
+    #[test]
     fn test_parse_boolean_expression() {
         let node = test_node("boolean", "true");
         let expr = parse_expression(&node).unwrap();
@@ -1630,6 +1735,51 @@ mod tests {
         let node = test_node("string", "\"hello\"");
         let expr = parse_expression(&node).unwrap();
         assert!(matches!(expr, Expression::String(s) if s == "hello"));
+    }
+
+    /// Test that `literal` wrapper type correctly delegates to child nodes.
+    /// The grammar defines `literal` as a supertype containing number, boolean, string, etc.
+    #[test]
+    fn test_parse_literal_wrapper() {
+        let mut literal_node = test_node("literal", "0.1");
+        let float_child = test_node("float", "0.1");
+        literal_node.named_children.push(float_child);
+        
+        let expr = parse_expression(&literal_node).unwrap();
+        assert!(matches!(expr, Expression::Number(n) if (n - 0.1).abs() < 0.001));
+    }
+
+    /// Test that `expression` wrapper type correctly delegates to child nodes.
+    /// The grammar defines `expression` as a supertype for all expression variants.
+    #[test]
+    fn test_parse_expression_wrapper() {
+        let mut expr_node = test_node("expression", "42");
+        let num_child = test_node("integer", "42");
+        expr_node.named_children.push(num_child);
+        
+        let expr = parse_expression(&expr_node).unwrap();
+        assert!(matches!(expr, Expression::Number(n) if (n - 42.0).abs() < 0.001));
+    }
+
+    /// Test undef literal parsing.
+    #[test]
+    fn test_parse_undef_expression() {
+        let node = test_node("undef", "undef");
+        let expr = parse_expression(&node).unwrap();
+        assert!(matches!(expr, Expression::Undef));
+    }
+
+    /// Test nested literal > number > float structure (as produced by tree-sitter).
+    #[test]
+    fn test_parse_nested_literal_float() {
+        let mut literal_node = test_node("literal", "0.1");
+        let mut number_node = test_node("number", "0.1");
+        let float_node = test_node("float", "0.1");
+        number_node.named_children.push(float_node);
+        literal_node.named_children.push(number_node);
+        
+        let expr = parse_expression(&literal_node).unwrap();
+        assert!(matches!(expr, Expression::Number(n) if (n - 0.1).abs() < 0.001));
     }
 }
 

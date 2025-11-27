@@ -79,6 +79,17 @@ fn parse_node(node: &tree_sitter::Node, source: &str) -> Result<Option<Statement
     let span = Span::from_ts_node(node);
     
     match node.kind() {
+        // Module/Function definitions
+        "module_declaration" | "module_item" => parse_module_declaration(node, source, span),
+        "function_declaration" | "function_item" => parse_function_declaration(node, source, span),
+
+        // Control flow
+        "if_block" => parse_if_block(node, source, span),
+        "for_block" => parse_for_block(node, source, span),
+        
+        // Assignments
+        "assignment" => parse_assignment(node, source, span),
+
         // transform_chain: module_call followed by a statement (child)
         "transform_chain" => parse_transform_chain(node, source, span),
         
@@ -335,13 +346,6 @@ fn get_node_text(node: Option<tree_sitter::Node>, source: &str) -> Result<String
     Ok(source[n.start_byte()..n.end_byte()].to_string())
 }
 
-fn parse_dvec3(v: &[Expression]) -> Result<DVec3, ParseError> {
-    let x = if let Some(Expression::Number(n)) = v.first() { *n } else { 0.0 };
-    let y = if let Some(Expression::Number(n)) = v.get(1) { *n } else { 0.0 };
-    let z = if let Some(Expression::Number(n)) = v.get(2) { *n } else { 0.0 };
-    Ok(DVec3::new(x, y, z))
-}
-
 /// Parses cube() call, storing size as Expression for deferred evaluation.
 fn parse_cube_call(arguments: &[Argument], span: Span) -> Result<Option<Statement>, ParseError> {
     // Default size as expression
@@ -532,6 +536,270 @@ fn parse_rotate_extrude_call(arguments: &[Argument], children: Vec<Statement>, s
         angle,
         convexity,
         children,
+        span,
+    }))
+}
+
+/// Parses a module declaration: module name(params) statement
+fn parse_module_declaration(node: &tree_sitter::Node, source: &str, span: Span) -> Result<Option<Statement>, ParseError> {
+    let mut name = String::new();
+    let mut parameters = Vec::new();
+    let mut body = Vec::new();
+    
+    // Get module name
+    if let Some(name_node) = node.child_by_field_name("name") {
+        name = get_node_text(Some(name_node), source)?;
+    } else {
+        // Fallback: look for identifier
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                name = get_node_text(Some(child), source)?;
+                break;
+            }
+        }
+    }
+    
+    // Parse parameters
+    if let Some(params_node) = node.child_by_field_name("parameters") {
+        parameters = parse_parameters(&params_node, source)?;
+    }
+    
+    // Parse body
+    if let Some(body_node) = node.child_by_field_name("body") {
+        if let Some(stmt) = parse_node(&body_node, source)? {
+            // If body is a block, it might return a Union or just be a list of statements
+            // The AST expects Vec<Statement>.
+            // If parse_node returns a Block/Union, we might want to unwrap it, or just wrap single stmt
+            body.push(stmt);
+        }
+    } else {
+        // Fallback: look for non-parameter children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            let kind = child.kind();
+            if kind != "identifier" && kind != "parameters" && kind != "module" && kind != "function" {
+                 if let Some(stmt) = parse_node(&child, source)? {
+                     body.push(stmt);
+                 }
+            }
+        }
+    }
+
+    // Flatten body if it's a Union (common for block bodies)
+    if body.len() == 1 {
+        if let Statement::Union { children, .. } = &body[0] {
+            body = children.clone();
+        }
+    }
+
+    Ok(Some(Statement::ModuleDefinition {
+        name,
+        parameters,
+        body,
+        span,
+    }))
+}
+
+/// Parses a function declaration: function name(params) = expression;
+fn parse_function_declaration(node: &tree_sitter::Node, source: &str, span: Span) -> Result<Option<Statement>, ParseError> {
+    let mut name = String::new();
+    let mut parameters = Vec::new();
+    
+    // Get function name
+    if let Some(name_node) = node.child_by_field_name("name") {
+        name = get_node_text(Some(name_node), source)?;
+    }
+    
+    // Parse parameters
+    if let Some(params_node) = node.child_by_field_name("parameters") {
+        parameters = parse_parameters(&params_node, source)?;
+    }
+    
+    // Parse body expression
+    let body_expr = if let Some(body_node) = node.child_by_field_name("body") {
+        parse_expression(&body_node, source)?
+    } else {
+        // Look for expression after =
+        let mut cursor = node.walk();
+        let mut found_eq = false;
+        let mut expr = Expression::Number(0.0); // Default placeholder
+        for child in node.children(&mut cursor) {
+            if child.kind() == "=" {
+                found_eq = true;
+                continue;
+            }
+            if found_eq {
+                expr = parse_expression(&child, source)?;
+                break;
+            }
+        }
+        expr
+    };
+
+    Ok(Some(Statement::FunctionDefinition {
+        name,
+        parameters,
+        body: body_expr,
+        span,
+    }))
+}
+
+/// Parses parameters for modules and functions
+fn parse_parameters(node: &tree_sitter::Node, source: &str) -> Result<Vec<Parameter>, ParseError> {
+    let mut parameters = Vec::new();
+    let mut cursor = node.walk();
+    
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "identifier" => {
+                let name = get_node_text(Some(child), source)?;
+                parameters.push(Parameter::required(name));
+            }
+            "assignment" => {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    let name = get_node_text(Some(name_node), source)?;
+                    if let Some(value_node) = child.child_by_field_name("value") {
+                        let default_val = parse_expression(&value_node, source)?;
+                        parameters.push(Parameter::optional(name, default_val));
+                    }
+                }
+            }
+            "parameter" => {
+                 // Some grammars wrap identifier/assignment in parameter node
+                 let mut inner_cursor = child.walk();
+                 for inner in child.children(&mut inner_cursor) {
+                     if inner.kind() == "identifier" {
+                         let name = get_node_text(Some(inner), source)?;
+                         parameters.push(Parameter::required(name));
+                     } else if inner.kind() == "assignment" {
+                        if let Some(name_node) = inner.child_by_field_name("name") {
+                            let name = get_node_text(Some(name_node), source)?;
+                            if let Some(value_node) = inner.child_by_field_name("value") {
+                                let default_val = parse_expression(&value_node, source)?;
+                                parameters.push(Parameter::optional(name, default_val));
+                            }
+                        }
+                     }
+                 }
+            }
+            _ => {}
+        }
+    }
+    Ok(parameters)
+}
+
+/// Parses if block
+fn parse_if_block(node: &tree_sitter::Node, source: &str, span: Span) -> Result<Option<Statement>, ParseError> {
+    let mut condition = Expression::Boolean(true);
+    let mut then_branch = Vec::new();
+    let mut else_branch = None;
+
+    if let Some(cond_node) = node.child_by_field_name("condition") {
+        // Usually condition is parenthesized_expression
+        if cond_node.kind() == "parenthesized_expression" {
+            let mut cursor = cond_node.walk();
+            for child in cond_node.children(&mut cursor) {
+                 if child.kind() != "(" && child.kind() != ")" {
+                     condition = parse_expression(&child, source)?;
+                     break;
+                 }
+            }
+        } else {
+            condition = parse_expression(&cond_node, source)?;
+        }
+    }
+
+    if let Some(consequence) = node.child_by_field_name("consequence") {
+        if let Some(stmt) = parse_node(&consequence, source)? {
+            // Flatten if block
+            if let Statement::Union { children, .. } = stmt {
+                then_branch = children;
+            } else {
+                then_branch.push(stmt);
+            }
+        }
+    }
+    
+    if let Some(alternative) = node.child_by_field_name("alternative") {
+        // alternative often includes "else" keyword node, we want the statement
+        let mut else_stmts = Vec::new();
+        // The field 'alternative' points to the statement after 'else' usually?
+        // Let's check if it points to 'else' or the statement.
+        // If it's the statement, parse it.
+        if alternative.kind() == "else" {
+            // This shouldn't happen if field points to the alternative statement, but let's be safe
+        } else {
+             if let Some(stmt) = parse_node(&alternative, source)? {
+                if let Statement::Union { children, .. } = stmt {
+                    else_stmts = children;
+                } else {
+                    else_stmts.push(stmt);
+                }
+             }
+        }
+        else_branch = Some(else_stmts);
+    }
+
+    Ok(Some(Statement::If {
+        condition,
+        then_branch,
+        else_branch,
+        span,
+    }))
+}
+
+/// Parses for block
+fn parse_for_block(node: &tree_sitter::Node, source: &str, span: Span) -> Result<Option<Statement>, ParseError> {
+    // Basic support for single assignment for loops: for(i=[0:10]) ...
+    let mut variable = String::new();
+    let mut range = Expression::Vector(vec![]);
+    let mut body = Vec::new();
+
+    // This is simplified. Real for loops are complex in OpenSCAD (multiple assignments, etc.)
+    // We assume standard `for(var = range) body` structure
+    
+    // Try to find assignments
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "assignment" {
+             if let Some(name_node) = child.child_by_field_name("name") {
+                 variable = get_node_text(Some(name_node), source)?;
+             }
+             if let Some(value_node) = child.child_by_field_name("value") {
+                 range = parse_expression(&value_node, source)?;
+             }
+        } else if child.kind() == "parenthesized_expression" || child.kind() == "assignments" {
+             // assignments inside parens
+             let mut inner = child.walk();
+             for inner_child in child.children(&mut inner) {
+                 if inner_child.kind() == "assignment" {
+                     if let Some(name_node) = inner_child.child_by_field_name("name") {
+                         variable = get_node_text(Some(name_node), source)?;
+                     }
+                     if let Some(value_node) = inner_child.child_by_field_name("value") {
+                         range = parse_expression(&value_node, source)?;
+                     }
+                 }
+             }
+        }
+    }
+
+    // Body
+    if let Some(body_node) = node.child_by_field_name("body") {
+         if let Some(stmt) = parse_node(&body_node, source)? {
+            if let Statement::Union { children, .. } = stmt {
+                body = children;
+            } else {
+                body.push(stmt);
+            }
+         }
+    }
+
+    Ok(Some(Statement::ForLoop {
+        variable,
+        range,
+        body,
         span,
     }))
 }

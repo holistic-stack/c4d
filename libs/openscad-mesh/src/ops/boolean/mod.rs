@@ -1,21 +1,24 @@
 //! # Boolean Operations
 //!
-//! CSG (Constructive Solid Geometry) boolean operations using BSP trees.
-//! Based on the csg.js algorithm by Evan Wallace.
+//! CSG (Constructive Solid Geometry) boolean operations with multiple backends.
 //!
-//! ## Algorithm Overview
+//! ## Backends
 //!
-//! BSP trees recursively partition space using planes. Each node contains:
-//! - A dividing plane
-//! - Polygons coplanar with the plane
-//! - Front subtree (polygons in front of plane)
-//! - Back subtree (polygons behind plane)
+//! - **Manifold**: Fast intersection-based algorithm (default)
+//! - **BSP**: Traditional BSP tree algorithm (fallback)
+//!
+//! ## Features
+//!
+//! - **Lazy Evaluation**: CSG tree defers computation
+//! - **Tree Rewriting**: Optimizes operation order
+//! - **Mesh Caching**: Caches repeated module calls
+//! - **Spatial Indexing**: O(n log n) triangle queries
 //!
 //! ## Operations
 //!
-//! - **Union**: A ∪ B = A.clipTo(B) + B.clipTo(A).invert().clipTo(A).invert()
-//! - **Difference**: A - B = A.invert().clipTo(B).invert() + B.clipTo(A).invert()
-//! - **Intersection**: A ∩ B = A.invert().clipTo(B.invert()).invert() + B.invert().clipTo(A).invert()
+//! - **Union**: A ∪ B - combines both volumes
+//! - **Difference**: A - B - subtracts B from A
+//! - **Intersection**: A ∩ B - keeps only common volume
 //!
 //! ## Browser Safety
 //!
@@ -26,6 +29,12 @@ mod bsp;
 mod plane;
 mod polygon;
 mod vertex;
+
+// New Manifold-like modules
+pub mod cache;
+pub mod csg_tree;
+pub mod halfedge;
+pub mod manifold;
 
 #[cfg(test)]
 mod tests;
@@ -265,4 +274,217 @@ fn polygons_to_mesh(polygons: &[Polygon]) -> Result<Mesh, MeshError> {
     }
 
     Ok(mesh)
+}
+
+// =============================================================================
+// CSG BACKEND SELECTION
+// =============================================================================
+
+/// CSG backend selection for boolean operations.
+///
+/// Choose between Manifold (fast) and BSP (traditional) algorithms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CsgBackend {
+    /// Manifold-like intersection-based algorithm (faster for large meshes)
+    #[default]
+    Manifold,
+    /// Traditional BSP tree algorithm (more robust for edge cases)
+    Bsp,
+}
+
+/// Computes union using the specified backend.
+///
+/// # Arguments
+///
+/// * `a` - First mesh
+/// * `b` - Second mesh  
+/// * `backend` - Which algorithm to use
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let result = union_with_backend(&mesh_a, &mesh_b, CsgBackend::Manifold)?;
+/// ```
+pub fn union_with_backend(a: &Mesh, b: &Mesh, backend: CsgBackend) -> Result<Mesh, MeshError> {
+    match backend {
+        CsgBackend::Manifold => manifold::union(a, b),
+        CsgBackend::Bsp => union(a, b),
+    }
+}
+
+/// Computes difference using the specified backend.
+///
+/// # Arguments
+///
+/// * `a` - Mesh to subtract from
+/// * `b` - Mesh to subtract
+/// * `backend` - Which algorithm to use
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let result = difference_with_backend(&mesh_a, &mesh_b, CsgBackend::Manifold)?;
+/// ```
+pub fn difference_with_backend(a: &Mesh, b: &Mesh, backend: CsgBackend) -> Result<Mesh, MeshError> {
+    match backend {
+        CsgBackend::Manifold => manifold::difference(a, b),
+        CsgBackend::Bsp => difference(a, b),
+    }
+}
+
+/// Computes intersection using the specified backend.
+///
+/// # Arguments
+///
+/// * `a` - First mesh
+/// * `b` - Second mesh
+/// * `backend` - Which algorithm to use
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let result = intersection_with_backend(&mesh_a, &mesh_b, CsgBackend::Manifold)?;
+/// ```
+pub fn intersection_with_backend(a: &Mesh, b: &Mesh, backend: CsgBackend) -> Result<Mesh, MeshError> {
+    match backend {
+        CsgBackend::Manifold => manifold::intersection(a, b),
+        CsgBackend::Bsp => intersection(a, b),
+    }
+}
+
+// =============================================================================
+// CSG EVALUATOR WITH OPTIMIZATION
+// =============================================================================
+
+use csg_tree::{CsgNode, CsgOp, TreeOptimizer};
+use cache::{CacheKey, MeshCache};
+use std::sync::Arc;
+
+/// CSG evaluator with tree optimization and caching.
+///
+/// Evaluates CSG trees with:
+/// - Tree rewriting to minimize intermediate mesh sizes
+/// - Mesh caching for repeated operations
+/// - Automatic backend selection based on mesh complexity
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let mut evaluator = CsgEvaluator::new();
+/// let tree = CsgNode::union(
+///     CsgNode::leaf(mesh_a),
+///     CsgNode::leaf(mesh_b),
+/// );
+/// let result = evaluator.evaluate(tree)?;
+/// ```
+pub struct CsgEvaluator {
+    /// Tree optimizer for rewriting
+    optimizer: TreeOptimizer,
+    /// Mesh cache
+    cache: MeshCache,
+    /// Backend to use
+    backend: CsgBackend,
+    /// Triangle threshold for backend selection
+    auto_backend_threshold: usize,
+}
+
+impl CsgEvaluator {
+    /// Creates a new CSG evaluator.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let evaluator = CsgEvaluator::new();
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            optimizer: TreeOptimizer::new(),
+            cache: MeshCache::new(500),
+            backend: CsgBackend::Manifold,
+            auto_backend_threshold: 1000,
+        }
+    }
+
+    /// Creates an evaluator with a specific backend.
+    pub fn with_backend(backend: CsgBackend) -> Self {
+        Self {
+            backend,
+            ..Self::new()
+        }
+    }
+
+    /// Evaluates a CSG tree.
+    ///
+    /// Applies optimization and caching automatically.
+    ///
+    /// # Arguments
+    ///
+    /// * `tree` - The CSG tree to evaluate
+    ///
+    /// # Returns
+    ///
+    /// The resulting mesh.
+    pub fn evaluate(&mut self, tree: CsgNode) -> Result<Mesh, MeshError> {
+        // Optimize the tree first
+        let optimized = self.optimizer.optimize(tree);
+        
+        // Evaluate recursively
+        self.eval_node(&optimized)
+    }
+
+    /// Recursively evaluates a CSG node.
+    fn eval_node(&mut self, node: &CsgNode) -> Result<Mesh, MeshError> {
+        match node {
+            CsgNode::Leaf { mesh, .. } => Ok(Mesh::clone(mesh.as_ref())),
+            
+            CsgNode::Binary { op, left, right, .. } => {
+                // Evaluate children
+                let left_mesh = self.eval_node(left)?;
+                let right_mesh = self.eval_node(right)?;
+
+                // Select backend based on complexity
+                let total_tris = left_mesh.triangle_count() + right_mesh.triangle_count();
+                let backend = if total_tris > self.auto_backend_threshold {
+                    CsgBackend::Manifold
+                } else {
+                    self.backend
+                };
+
+                // Perform the operation
+                match op {
+                    CsgOp::Union => union_with_backend(&left_mesh, &right_mesh, backend),
+                    CsgOp::Difference => difference_with_backend(&left_mesh, &right_mesh, backend),
+                    CsgOp::Intersection => intersection_with_backend(&left_mesh, &right_mesh, backend),
+                }
+            }
+            
+            CsgNode::Cached { key, fallback } => {
+                // Try cache first
+                if let Some(cached) = self.cache.get(&CacheKey::new(key.clone())) {
+                    return Ok((*cached).clone());
+                }
+
+                // Evaluate fallback and cache result
+                let result = self.eval_node(fallback)?;
+                self.cache.put(CacheKey::new(key.clone()), result.clone());
+                Ok(result)
+            }
+        }
+    }
+
+    /// Returns cache statistics.
+    pub fn cache_stats(&self) -> &cache::CacheStats {
+        self.cache.stats()
+    }
+
+    /// Clears the cache.
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+    }
+}
+
+impl Default for CsgEvaluator {
+    fn default() -> Self {
+        Self::new()
+    }
 }

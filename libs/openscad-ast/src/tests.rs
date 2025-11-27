@@ -79,6 +79,28 @@ fn test_parse_sphere() {
     }
 }
 
+#[test]
+fn test_parse_module_definition() {
+    let source = "module my_mod(a, b=1) { cube(a); }";
+    let result = parse_to_ast(source);
+    assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+    let stmts = result.unwrap();
+    assert_eq!(stmts.len(), 1);
+    
+    match &stmts[0] {
+        Statement::ModuleDefinition { name, parameters, body, .. } => {
+            assert_eq!(name, "my_mod");
+            assert_eq!(parameters.len(), 2);
+            assert_eq!(parameters[0].name, "a");
+            assert!(parameters[0].default.is_none());
+            assert_eq!(parameters[1].name, "b");
+            assert!(parameters[1].default.is_some());
+            assert_eq!(body.len(), 1);
+        }
+        _ => panic!("Expected ModuleDefinition, got {:?}", stmts[0]),
+    }
+}
+
 /// Tests sphere parsing with $fn parameter
 #[test]
 fn test_parse_sphere_with_fn() {

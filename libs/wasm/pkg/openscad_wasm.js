@@ -567,6 +567,9 @@ function __wbg_get_imports() {
             wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
         }
     };
+    imports.wbg.__wbg_log_8cec76766b8c0e33 = function(arg0) {
+        console.log(arg0);
+    };
     imports.wbg.__wbg_new_1acc0b6eea89d040 = function() {
         const ret = new Object();
         return ret;
@@ -585,6 +588,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_new_from_slice_924249b74d07c449 = function(arg0, arg1) {
         const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
+        return ret;
+    };
+    imports.wbg.__wbg_now_793306c526e2e3b6 = function() {
+        const ret = Date.now();
         return ret;
     };
     imports.wbg.__wbg_push_df81a39d04db858c = function(arg0, arg1) {

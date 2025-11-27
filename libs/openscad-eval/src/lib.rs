@@ -44,15 +44,20 @@ pub mod evaluator;
 pub mod ir;
 pub mod resolution;
 
+pub mod value;
+
 pub use context::EvaluationContext;
 pub use error::EvalError;
 #[cfg(feature = "native-parser")]
 pub use evaluator::evaluate;
 pub use evaluator::evaluate_from_cst;
 pub use ir::GeometryNode;
+pub use value::Value;
 
 // Re-export commonly used types
 pub use ir::{BooleanOperation, OffsetAmount};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod repro_complex;
