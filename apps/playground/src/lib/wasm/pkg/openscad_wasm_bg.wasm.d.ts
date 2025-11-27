@@ -2,7 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const get_version: () => [number, number];
-export const render_from_cst: (a: number, b: number) => any;
+export const render: (a: number, b: number) => any;
 export const wasm_init: () => void;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_exn_store: (a: number) => void;

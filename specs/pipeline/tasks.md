@@ -265,86 +265,122 @@ fn parse_range(&mut self) -> Range;
 
 ---
 
-## ✅ WASM Proof of Concept Complete (2025-11-27)
+## ✅ Full Pipeline Complete (2025-11-27)
 
-### Temporary Architecture (to be replaced)
+### Current Architecture (Pure Rust)
 
 ```text
-OpenSCAD Source
+OpenSCAD Source ("cube(10);")
       ↓
-[JavaScript] web-tree-sitter + tree-sitter-openscad.wasm
-      ↓ (CST JSON)
-[Rust WASM] render_from_cst() - Pure Rust, no C deps
-      ↓ (Mesh Data)
+[Rust WASM] render(source) - Full pipeline in pure Rust
+  ├─ openscad-parser: Lexer + Parser → CST
+  ├─ openscad-ast: CST → AST transformation
+  ├─ openscad-eval: AST → GeometryNode evaluation
+  └─ openscad-mesh: GeometryNode → Mesh generation
+      ↓ (Mesh Data: vertices, indices, normals)
 [JavaScript] Three.js WebGL
 ```
 
 ### Build & Run
 
 ```bash
-# Build WASM (from workspace root)
-node scripts/build-wasm.js
+# Build WASM (from playground directory)
+cd apps/playground
+pnpm run build:wasm
 
 # Start playground
-cd apps/playground && npm install && npm run dev
+pnpm dev
 # Opens http://localhost:5173/
 ```
 
+### Verified Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `cube(size)` | ✅ | 24 vertices, 12 triangles |
+| `sphere(r)` | ✅ | 496 vertices, 840 triangles |
+| `cylinder(h, r)` | ✅ | With r1/r2 for cones |
+| `translate([x,y,z])` | ✅ | Working |
+| `rotate([x,y,z])` | ✅ | Working |
+| `scale([x,y,z])` | ✅ | Working |
+| `union() { ... }` | ✅ | BSP-based |
+| `difference() { ... }` | ✅ | BSP-based |
+| `intersection() { ... }` | ✅ | BSP-based |
+| `$fn/$fa/$fs` | ✅ | Resolution parameters |
+| `x = 10;` | ✅ | Variable assignment |
+| Lexical scoping | ✅ | Block-level scoping |
+| `for (i=[0:10])` | ✅ | For loop iteration |
+| `if/else` | ✅ | Conditional geometry |
+| Pure Rust parser | ✅ | No tree-sitter dependency |
+| Single WASM output | ✅ | ~160KB optimized |
+| SRP refactoring | ✅ | Parser (9 modules) + AST (8 modules) + Evaluator (6 modules) |
+| `mirror([x,y,z])` | ✅ | Reflection transform |
+| `color([r,g,b,a])` | ✅ | Color modifier |
+| `function name(params) = expr` | ✅ | User-defined functions |
+| **293 tests passing** | ✅ | Full workspace |
+
 ---
 
-## 🔮 Future Phases
+## 🔮 Next Steps
 
 | Priority | Task | Description |
 |----------|------|-------------|
-| 2 | **Evaluator** | Implement EvaluationContext, variable scopes |
-| 3 | **Primitives** | Implement cube, sphere, cylinder in openscad-mesh |
-| 4 | **Transforms** | Implement translate, rotate, scale, mirror |
-| 5 | **Booleans** | Implement union, difference, intersection |
-| 6 | **WebGL CSG** | GPU-accelerated preview rendering |
+| ~~1~~ | ~~**Mirror**~~ | ✅ mirror([x,y,z]) transform - DONE |
+| ~~2~~ | ~~**Color**~~ | ✅ color([r,g,b,a]) modifier - DONE |
+| ~~3~~ | ~~**User-defined Functions**~~ | ✅ function name(params) = expr; - DONE |
+| 1 | **User-defined Modules** | module name(params) { ... } |
+| 2 | **Hull/Minkowski** | Advanced CSG operations |
+| 3 | **2D primitives** | square, circle, polygon |
 
 ---
 
 ## Feature Roadmap
 
-### Phase 1: Core Pipeline (Current)
+### Phase 1: Core Pipeline ✅ COMPLETE
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| tree-sitter parsing (JS) | ✅ | web-tree-sitter |
-| CST to WASM transfer | ✅ | JSON serialization |
-| Cube mesh (hardcoded) | ✅ | Proof of concept |
+| Pure Rust parser | ✅ | Lexer + recursive descent |
+| CST → AST transformation | ✅ | Visitor pattern |
+| AST evaluation | ✅ | GeometryNode IR |
+| Mesh generation | ✅ | Primitives + transforms |
+| WASM integration | ✅ | render(source) API |
 | Three.js rendering | ✅ | Z-up, orbit controls |
 
-### Phase 2: AST & Evaluation
+### Phase 2: Primitives & Transforms ✅ COMPLETE
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| AST type definitions | ⏳ | Statement, Expression |
-| CST to AST parser | ⏳ | In openscad-ast |
-| Variable scopes | ⏳ | EvaluationContext |
-| $fn/$fa/$fs params | ⏳ | Resolution calculation |
-| Module/function defs | ⏳ | Scope management |
+| cube(size, center) | ✅ | Working |
+| sphere(r\|d) | ✅ | Default $fn=16 |
+| cylinder(h, r1, r2) | ✅ | With cone support |
+| translate | ✅ | Working |
+| rotate | ✅ | Working |
+| scale | ✅ | Working |
+| mirror | ✅ | Reflection transform |
+| color modifier | ✅ | RGBA color support |
 
-### Phase 3: Primitives & Transforms
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| cube(size, center) | ⏳ | |
-| sphere(r\|d) | ⏳ | $fn resolution |
-| cylinder(h, r1, r2) | ⏳ | $fn resolution |
-| translate/rotate/scale | ⏳ | glam transforms |
-| mirror/multmatrix | ⏳ | |
-| color modifier | ⏳ | |
-
-### Phase 4: Boolean Operations
+### Phase 3: Boolean Operations ✅ COMPLETE
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| union() | ⏳ | BSP or Manifold |
-| difference() | ⏳ | |
-| intersection() | ⏳ | |
+| union() | ✅ | BSP-based |
+| difference() | ✅ | BSP-based |
+| intersection() | ✅ | BSP-based |
 | hull() | ⏳ | QuickHull |
 | minkowski() | ⏳ | |
+
+### Phase 4: Variables & Functions ✅ MOSTLY COMPLETE
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Variable assignment | ✅ | x = 10; |
+| $fn/$fa/$fs params | ✅ | Resolution calculation |
+| Lexical scoping | ✅ | Block-level scoping |
+| For loops | ✅ | for(i=[0:10]) |
+| If/else | ✅ | Conditional geometry |
+| User functions | ✅ | function name(params) = expr; |
+| User modules | ⏳ | Next priority |
 
 ### Phase 5: Advanced Features
 

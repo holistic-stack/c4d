@@ -3,6 +3,18 @@
 //! Recursive descent parser for OpenSCAD.
 //! Produces a Concrete Syntax Tree (CST).
 //!
+//! ## Module Structure (SRP)
+//!
+//! - `statements` - Statement dispatch facade
+//! - `module_call` - Module call and argument parsing
+//! - `control_flow` - For, if/else, let, blocks
+//! - `declarations` - Module/function declarations
+//! - `expressions` - Expression dispatch facade
+//! - `operators` - Binary, unary, ternary operators
+//! - `primaries` - Literals and identifiers
+//! - `postfix` - Call, index, member access
+//! - `collections` - List and range parsing
+//!
 //! ## Example
 //!
 //! ```rust
@@ -14,8 +26,18 @@
 //! let cst = parser.parse();
 //! ```
 
+// Statement parsing
 mod statements;
+mod module_call;
+mod control_flow;
+mod declarations;
+
+// Expression parsing
 mod expressions;
+mod operators;
+mod primaries;
+mod postfix;
+mod collections;
 
 use crate::cst::{Cst, CstNode, NodeKind};
 use crate::error::{ParseError, ParseErrorKind};

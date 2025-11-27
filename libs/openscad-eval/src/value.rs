@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 // =============================================================================
 
 /// A runtime value in OpenSCAD.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     /// Undefined value.
     Undef,

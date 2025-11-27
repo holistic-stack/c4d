@@ -2,6 +2,16 @@
 //!
 //! Transforms Concrete Syntax Tree to Abstract Syntax Tree.
 //!
+//! ## Module Structure (SRP)
+//!
+//! - `statements` - Statement transformation facade
+//! - `expressions` - Expression transformation facade
+//! - `arguments` - Shared argument transformation
+//! - `literals` - Literal transformations (number, string, boolean)
+//! - `operators` - Operator transformations (binary, unary, ternary)
+//! - `control_flow` - Control flow (for, if/else, blocks)
+//! - `declarations` - Declarations (assignment, module, function)
+//!
 //! ## Example
 //!
 //! ```rust
@@ -12,8 +22,16 @@
 //! let ast = transform(&cst).unwrap();
 //! ```
 
+// Core modules
 mod statements;
 mod expressions;
+
+// SRP modules
+mod arguments;
+mod literals;
+mod operators;
+mod control_flow;
+mod declarations;
 
 use crate::ast::Ast;
 use crate::error::AstError;

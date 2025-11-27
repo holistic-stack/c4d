@@ -1,16 +1,34 @@
 //! # Expression Transformation
 //!
-//! Transforms CST expression nodes to AST expressions.
+//! Facade module for transforming CST expression nodes to AST expressions.
+//!
+//! ## Module Structure (SRP)
+//!
+//! - `literals` - Number, string, boolean transformations
+//! - `operators` - Binary, unary, ternary operators
+//! - `arguments` - Function call arguments (shared)
+//!
+//! ## Example
+//!
+//! ```rust,ignore
+//! let expr = transform_expression(node)?;
+//! ```
 
-use crate::ast::{Expression, BinaryOp, UnaryOp, Argument};
+use crate::ast::Expression;
 use crate::error::AstError;
 use openscad_parser::{CstNode, NodeKind};
+
+use super::literals::{transform_number, transform_string, transform_boolean, transform_undef};
+use super::operators::{transform_binary, transform_unary, transform_ternary};
+use super::arguments::transform_arguments;
 
 // =============================================================================
 // PUBLIC API
 // =============================================================================
 
 /// Transform a CST node to an AST expression.
+///
+/// Dispatches to the appropriate transformation function based on node type.
 ///
 /// ## Parameters
 ///
@@ -25,7 +43,7 @@ pub fn transform_expression(node: &CstNode) -> Result<Expression, AstError> {
         NodeKind::Number => transform_number(node),
         NodeKind::String => transform_string(node),
         NodeKind::Boolean => transform_boolean(node),
-        NodeKind::Undef => Ok(Expression::Undef),
+        NodeKind::Undef => Ok(transform_undef()),
         
         // Identifiers
         NodeKind::Identifier => Ok(Expression::Identifier(node.text_or_empty().to_string())),
@@ -54,37 +72,6 @@ pub fn transform_expression(node: &CstNode) -> Result<Expression, AstError> {
 }
 
 // =============================================================================
-// LITERALS
-// =============================================================================
-
-/// Transform number literal.
-fn transform_number(node: &CstNode) -> Result<Expression, AstError> {
-    let text = node.text_or_empty();
-    let value: f64 = text.parse()
-        .map_err(|_| AstError::InvalidNumber(text.to_string()))?;
-    Ok(Expression::Number(value))
-}
-
-/// Transform string literal.
-fn transform_string(node: &CstNode) -> Result<Expression, AstError> {
-    let text = node.text_or_empty();
-    // Remove quotes
-    let content = if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
-        &text[1..text.len()-1]
-    } else {
-        text
-    };
-    Ok(Expression::String(content.to_string()))
-}
-
-/// Transform boolean literal.
-fn transform_boolean(node: &CstNode) -> Result<Expression, AstError> {
-    let text = node.text_or_empty();
-    let value = text == "true";
-    Ok(Expression::Boolean(value))
-}
-
-// =============================================================================
 // COMPOUND EXPRESSIONS
 // =============================================================================
 
@@ -97,6 +84,15 @@ fn transform_list(node: &CstNode) -> Result<Expression, AstError> {
 }
 
 /// Transform range expression.
+///
+/// ## CST Structure
+///
+/// ```text
+/// Range
+/// ├── Expression (start)
+/// ├── Expression (end or step)
+/// └── Expression (optional end)
+/// ```
 fn transform_range(node: &CstNode) -> Result<Expression, AstError> {
     let mut iter = node.children.iter();
     
@@ -129,62 +125,15 @@ fn transform_range(node: &CstNode) -> Result<Expression, AstError> {
     }
 }
 
-/// Transform binary expression.
-fn transform_binary(node: &CstNode) -> Result<Expression, AstError> {
-    if node.children.len() < 3 {
-        return Err(AstError::InvalidExpression("Binary expression needs 3 children".to_string()));
-    }
-    
-    let left = transform_expression(&node.children[0])?;
-    let op_text = node.children[1].text_or_empty();
-    let right = transform_expression(&node.children[2])?;
-    
-    let op = BinaryOp::from_str(op_text)
-        .ok_or_else(|| AstError::InvalidExpression(format!("Unknown operator: {}", op_text)))?;
-    
-    Ok(Expression::BinaryOp {
-        op,
-        left: Box::new(left),
-        right: Box::new(right),
-    })
-}
-
-/// Transform unary expression.
-fn transform_unary(node: &CstNode) -> Result<Expression, AstError> {
-    if node.children.len() < 2 {
-        return Err(AstError::InvalidExpression("Unary expression needs 2 children".to_string()));
-    }
-    
-    let op_text = node.children[0].text_or_empty();
-    let operand = transform_expression(&node.children[1])?;
-    
-    let op = UnaryOp::from_str(op_text)
-        .ok_or_else(|| AstError::InvalidExpression(format!("Unknown operator: {}", op_text)))?;
-    
-    Ok(Expression::UnaryOp {
-        op,
-        operand: Box::new(operand),
-    })
-}
-
-/// Transform ternary expression.
-fn transform_ternary(node: &CstNode) -> Result<Expression, AstError> {
-    if node.children.len() < 3 {
-        return Err(AstError::InvalidExpression("Ternary expression needs 3 children".to_string()));
-    }
-    
-    let condition = transform_expression(&node.children[0])?;
-    let then_expr = transform_expression(&node.children[1])?;
-    let else_expr = transform_expression(&node.children[2])?;
-    
-    Ok(Expression::Ternary {
-        condition: Box::new(condition),
-        then_expr: Box::new(then_expr),
-        else_expr: Box::new(else_expr),
-    })
-}
-
 /// Transform function call.
+///
+/// ## CST Structure
+///
+/// ```text
+/// FunctionCall
+/// ├── Identifier (function name)
+/// └── Arguments
+/// ```
 fn transform_function_call(node: &CstNode) -> Result<Expression, AstError> {
     // First child is the function (identifier or expression)
     let name = node.children.first()
@@ -198,50 +147,13 @@ fn transform_function_call(node: &CstNode) -> Result<Expression, AstError> {
         })
         .ok_or_else(|| AstError::InvalidExpression("Function call missing name".to_string()))?;
     
-    // Arguments are in Arguments node
+    // Arguments are in Arguments node (use shared transformer)
     let args = node.find_child(NodeKind::Arguments)
         .map(|a| transform_arguments(&a.children))
         .transpose()?
         .unwrap_or_default();
     
     Ok(Expression::FunctionCall { name, args })
-}
-
-/// Transform arguments for function call.
-fn transform_arguments(nodes: &[CstNode]) -> Result<Vec<Argument>, AstError> {
-    let mut args = Vec::new();
-    
-    for node in nodes {
-        match node.kind {
-            NodeKind::Argument => {
-                if let Some(expr_node) = node.children.first() {
-                    let expr = transform_expression(expr_node)?;
-                    args.push(Argument::Positional(expr));
-                }
-            }
-            NodeKind::NamedArgument => {
-                let name = node.find_child(NodeKind::Identifier)
-                    .map(|n| n.text_or_empty().to_string())
-                    .ok_or_else(|| AstError::InvalidExpression("Named argument missing name".to_string()))?;
-                
-                let value = node.children.iter()
-                    .find(|c| c.kind != NodeKind::Identifier)
-                    .map(transform_expression)
-                    .transpose()?
-                    .ok_or_else(|| AstError::InvalidExpression("Named argument missing value".to_string()))?;
-                
-                args.push(Argument::Named { name, value });
-            }
-            _ => {
-                if node.kind.is_expression() {
-                    let expr = transform_expression(node)?;
-                    args.push(Argument::Positional(expr));
-                }
-            }
-        }
-    }
-    
-    Ok(args)
 }
 
 /// Transform index expression.
@@ -281,6 +193,7 @@ fn transform_member(node: &CstNode) -> Result<Expression, AstError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::BinaryOp;
     use openscad_parser::parse as parse_cst;
 
     fn parse_expr(source: &str) -> Expression {

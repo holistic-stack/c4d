@@ -164,45 +164,6 @@ export function get_version() {
 }
 
 /**
- * Render from CST JSON (main entry point).
- *
- * Accepts CST JSON from web-tree-sitter and returns mesh data.
- *
- * ## Parameters
- *
- * - `cst_json`: JSON string of CST from tree-sitter
- *
- * ## Returns
- *
- * JavaScript object with typed arrays:
- * - `success`: boolean
- * - `vertices`: Float32Array (x, y, z positions)
- * - `indices`: Uint32Array (triangle indices)
- * - `normals`: Float32Array (x, y, z normals)
- * - `vertexCount`: number
- * - `triangleCount`: number
- * - `renderTimeMs`: number
- *
- * ## Example (JavaScript)
- *
- * ```javascript
- * const cstJson = parseToJson('cube(20);');
- * const result = render_from_cst(cstJson);
- * if (result.success) {
- *     scene.updateMesh(result.vertices, result.indices, result.normals);
- * }
- * ```
- * @param {string} cst_json
- * @returns {any}
- */
-export function render_from_cst(cst_json) {
-    const ptr0 = passStringToWasm0(cst_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.render_from_cst(ptr0, len0);
-    return ret;
-}
-
-/**
  * Initialize the WASM module.
  *
  * Sets up panic hook for better error messages in browser console.
@@ -217,6 +178,48 @@ export function render_from_cst(cst_json) {
  */
 export function wasm_init() {
     wasm.wasm_init();
+}
+
+/**
+ * Render OpenSCAD source code to mesh (main entry point).
+ *
+ * Full pipeline: parser → AST → evaluator → mesh generator.
+ * All processing done in pure Rust - no external dependencies.
+ *
+ * ## Parameters
+ *
+ * - `source`: OpenSCAD source code string
+ *
+ * ## Returns
+ *
+ * JavaScript object with typed arrays:
+ * - `success`: boolean
+ * - `vertices`: Float32Array (x, y, z positions)
+ * - `indices`: Uint32Array (triangle indices)
+ * - `normals`: Float32Array (x, y, z normals)
+ * - `vertexCount`: number
+ * - `triangleCount`: number
+ * - `renderTimeMs`: number
+ * - `error`: string (only if success is false)
+ *
+ * ## Example (JavaScript)
+ *
+ * ```javascript
+ * const result = render('cube(10);');
+ * if (result.success) {
+ *     scene.updateMesh(result.vertices, result.indices, result.normals);
+ * } else {
+ *     console.error(result.error);
+ * }
+ * ```
+ * @param {string} source
+ * @returns {any}
+ */
+export function render(source) {
+    const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.render(ptr0, len0);
+    return ret;
 }
 
 const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);
@@ -270,9 +273,6 @@ function __wbg_get_imports() {
         } finally {
             wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
         }
-    };
-    imports.wbg.__wbg_log_bf338cd0075812fd = function(arg0, arg1) {
-        console.log(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbg_new_1acc0b6eea89d040 = function() {
         const ret = new Object();

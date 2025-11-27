@@ -176,6 +176,10 @@ pub enum NodeKind {
     FunctionDeclaration,
     /// For loop like `for (i = [0:10]) { ... }`
     ForBlock,
+    /// For loop assignments like `i = [0:10], j = [0:5]`
+    ForAssignments,
+    /// Single for assignment like `i = [0:10]`
+    ForAssignment,
     /// If statement like `if (x > 0) { ... }`
     IfBlock,
     /// Let block like `let (x = 1) { ... }`

@@ -6,16 +6,16 @@
  * ## Architecture
  *
  * ```text
- * JavaScript → WASM Loader → Rust WASM → Mesh Data
+ * JavaScript → render(source) → Rust WASM (full pipeline) → Mesh Data
  * ```
  *
  * ## Usage
  *
  * ```typescript
- * import { initWasm, renderFromCst, getVersion } from './lib/wasm/loader';
+ * import { initWasm, render, getVersion } from './lib/wasm/loader';
  *
  * await initWasm();
- * const result = await renderFromCst(cstJson);
+ * const result = render('cube(10);');
  * ```
  */
 
@@ -61,14 +61,14 @@ interface WasmModule {
   /** Get module version */
   get_version: () => string;
 
-  /** Render from CST JSON */
-  render_from_cst: (cstJson: string) => RenderResult;
+  /** Render from source code (full pipeline) */
+  render: (source: string) => RenderResult;
 }
 
 /**
  * WASM init function type.
  */
-type WasmInit = () => Promise<void>;
+type WasmInit = () => Promise<unknown>;
 
 // =============================================================================
 // MODULE STATE
@@ -171,30 +171,30 @@ export function getVersion(): string {
 }
 
 /**
- * Render from CST JSON.
+ * Render OpenSCAD source code.
  *
- * Main render function - accepts CST from tree-sitter parser.
+ * Full pipeline: source → parser → AST → evaluator → mesh.
+ * All processing done in pure Rust WASM.
  *
- * @param cstJson - JSON string of CST
+ * @param source - OpenSCAD source code
  * @returns Render result with mesh data
  * @throws Error if WASM not initialized
  *
  * @example
  * ```typescript
- * const cstJson = parseToJson('cube(20);');
- * const result = renderFromCst(cstJson);
+ * const result = render('cube(10);');
  * if (result.success) {
  *   scene.updateMesh(result.vertices, result.indices, result.normals);
  * }
  * ```
  */
-export function renderFromCst(cstJson: string): RenderResult {
+export function render(source: string): RenderResult {
   if (!wasmModule) {
     throw new Error('WASM not initialized. Call initWasm() first.');
   }
 
   try {
-    return wasmModule.render_from_cst(cstJson);
+    return wasmModule.render(source);
   } catch (error) {
     return {
       success: false,

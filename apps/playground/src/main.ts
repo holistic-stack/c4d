@@ -2,20 +2,18 @@
  * # OpenSCAD Playground - Main Entry Point
  *
  * Initializes the application:
- * 1. Loads tree-sitter parser with OpenSCAD grammar
- * 2. Loads WASM module
- * 3. Sets up Three.js scene
- * 4. Connects editor to render pipeline
+ * 1. Loads WASM module (includes pure Rust parser)
+ * 2. Sets up Three.js scene
+ * 3. Connects editor to render pipeline
  *
  * ## Architecture
  *
  * ```text
- * Editor Input → tree-sitter → CST → WASM → Mesh → Three.js
+ * Editor Input → render(source) → WASM (full pipeline) → Mesh → Three.js
  * ```
  */
 
-import { initParser, parseToJson, isParserReady } from './lib/parser/openscad-parser';
-import { initWasm, renderFromCst, getVersion, isWasmReady } from './lib/wasm/loader';
+import { initWasm, render, getVersion, isWasmReady } from './lib/wasm/loader';
 import { SceneManager } from './lib/viewer/scene-manager';
 
 // =============================================================================
@@ -85,41 +83,31 @@ function hideLoading(): void {
 /**
  * Render the current editor content.
  *
- * Pipeline: Editor → tree-sitter → CST → WASM → Mesh → Three.js
+ * Pipeline: Editor → render(source) → WASM (full pipeline) → Mesh → Three.js
  */
 async function handleRender(): Promise<void> {
-  if (!isParserReady() || !isWasmReady() || !sceneManager) {
+  if (!isWasmReady() || !sceneManager) {
     setStatus('Not ready', true);
     return;
   }
 
   const source = editorElement.value;
-  setStatus('Parsing...');
+  setStatus('Rendering...');
   setRenderEnabled(false);
 
   try {
-    const totalStart = performance.now();
+    const startTime = performance.now();
 
-    // Step 1: Parse with tree-sitter
-    const parseStart = performance.now();
-    const cstJson = parseToJson(source);
-    const parseTime = performance.now() - parseStart;
-
-    // Step 2: Render with WASM
-    setStatus('Rendering...');
-    const renderStart = performance.now();
-    const result = renderFromCst(cstJson);
-    const wasmTime = performance.now() - renderStart;
-
-    const totalTime = performance.now() - totalStart;
+    // Full pipeline in WASM: parse → AST → eval → mesh
+    const result = render(source);
+    const totalTime = performance.now() - startTime;
 
     if (result.success && result.vertices && result.indices && result.normals) {
-      // Step 3: Update Three.js scene
+      // Update Three.js scene
       sceneManager.updateMesh(result.vertices, result.indices, result.normals);
 
       setStatus(
         `✓ ${result.vertexCount} vertices, ${result.triangleCount} triangles | ` +
-        `Parse: ${parseTime.toFixed(1)}ms, WASM: ${wasmTime.toFixed(1)}ms, ` +
         `Total: ${totalTime.toFixed(1)}ms`
       );
     } else {
@@ -143,15 +131,9 @@ async function handleRender(): Promise<void> {
  */
 async function init(): Promise<void> {
   try {
-    setStatus('Loading parser...');
-
-    // Initialize tree-sitter parser
-    await initParser();
-    console.log('[App] Parser initialized');
-
     setStatus('Loading WASM...');
 
-    // Initialize WASM module
+    // Initialize WASM module (includes pure Rust parser)
     await initWasm();
     console.log('[App] WASM initialized');
 

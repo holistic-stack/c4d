@@ -84,24 +84,15 @@ impl MeshBuilder {
                 self.build(child)?;
             }
 
-            // Boolean operations (simplified - just merge for now)
+            // Boolean operations using BSP
             GeometryNode::Union { children } => {
-                for child in children {
-                    self.build(child)?;
-                }
+                self.build_union(children)?;
             }
             GeometryNode::Difference { children } => {
-                // TODO: Implement proper CSG
-                // For now, just render first child
-                if let Some(first) = children.first() {
-                    self.build(first)?;
-                }
+                self.build_difference(children)?;
             }
             GeometryNode::Intersection { children } => {
-                // TODO: Implement proper CSG
-                if let Some(first) = children.first() {
-                    self.build(first)?;
-                }
+                self.build_intersection(children)?;
             }
 
             // Groups
@@ -415,6 +406,108 @@ impl MeshBuilder {
         child_mesh.transform(&matrix);
 
         self.mesh.merge(&child_mesh);
+        Ok(())
+    }
+
+    // =========================================================================
+    // BOOLEAN OPERATIONS
+    // =========================================================================
+
+    /// Build union of children.
+    fn build_union(&mut self, children: &[GeometryNode]) -> Result<(), MeshError> {
+        if children.is_empty() {
+            return Ok(());
+        }
+
+        // Build all children into meshes
+        let mut meshes: Vec<Mesh> = Vec::new();
+        for child in children {
+            let mut child_mesh = Mesh::new();
+            let mut child_builder = MeshBuilder { mesh: child_mesh };
+            child_builder.build(child)?;
+            child_mesh = child_builder.mesh;
+            if !child_mesh.is_empty() {
+                meshes.push(child_mesh);
+            }
+        }
+
+        if meshes.is_empty() {
+            return Ok(());
+        }
+
+        // Union all meshes together
+        let mut result = meshes.remove(0);
+        for mesh in meshes {
+            result = crate::ops::boolean::union(&result, &mesh);
+        }
+
+        self.mesh.merge(&result);
+        Ok(())
+    }
+
+    /// Build difference of children (first minus rest).
+    fn build_difference(&mut self, children: &[GeometryNode]) -> Result<(), MeshError> {
+        if children.is_empty() {
+            return Ok(());
+        }
+
+        // Build first child
+        let mut result = Mesh::new();
+        {
+            let mut builder = MeshBuilder { mesh: Mesh::new() };
+            builder.build(&children[0])?;
+            result = builder.mesh;
+        }
+
+        if result.is_empty() {
+            return Ok(());
+        }
+
+        // Subtract remaining children
+        for child in &children[1..] {
+            let mut child_mesh = Mesh::new();
+            let mut child_builder = MeshBuilder { mesh: child_mesh };
+            child_builder.build(child)?;
+            child_mesh = child_builder.mesh;
+            if !child_mesh.is_empty() {
+                result = crate::ops::boolean::difference(&result, &child_mesh);
+            }
+        }
+
+        self.mesh.merge(&result);
+        Ok(())
+    }
+
+    /// Build intersection of children.
+    fn build_intersection(&mut self, children: &[GeometryNode]) -> Result<(), MeshError> {
+        if children.is_empty() {
+            return Ok(());
+        }
+
+        // Build first child
+        let mut result = Mesh::new();
+        {
+            let mut builder = MeshBuilder { mesh: Mesh::new() };
+            builder.build(&children[0])?;
+            result = builder.mesh;
+        }
+
+        if result.is_empty() {
+            return Ok(());
+        }
+
+        // Intersect with remaining children
+        for child in &children[1..] {
+            let mut child_mesh = Mesh::new();
+            let mut child_builder = MeshBuilder { mesh: child_mesh };
+            child_builder.build(child)?;
+            child_mesh = child_builder.mesh;
+            if !child_mesh.is_empty() {
+                result = crate::ops::boolean::intersection(&result, &child_mesh);
+            }
+        }
+
+        self.mesh.merge(&result);
         Ok(())
     }
 }

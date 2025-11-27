@@ -16,37 +16,6 @@
  */
 export function get_version(): string;
 /**
- * Render from CST JSON (main entry point).
- *
- * Accepts CST JSON from web-tree-sitter and returns mesh data.
- *
- * ## Parameters
- *
- * - `cst_json`: JSON string of CST from tree-sitter
- *
- * ## Returns
- *
- * JavaScript object with typed arrays:
- * - `success`: boolean
- * - `vertices`: Float32Array (x, y, z positions)
- * - `indices`: Uint32Array (triangle indices)
- * - `normals`: Float32Array (x, y, z normals)
- * - `vertexCount`: number
- * - `triangleCount`: number
- * - `renderTimeMs`: number
- *
- * ## Example (JavaScript)
- *
- * ```javascript
- * const cstJson = parseToJson('cube(20);');
- * const result = render_from_cst(cstJson);
- * if (result.success) {
- *     scene.updateMesh(result.vertices, result.indices, result.normals);
- * }
- * ```
- */
-export function render_from_cst(cst_json: string): any;
-/**
  * Initialize the WASM module.
  *
  * Sets up panic hook for better error messages in browser console.
@@ -60,13 +29,47 @@ export function render_from_cst(cst_json: string): any;
  * ```
  */
 export function wasm_init(): void;
+/**
+ * Render OpenSCAD source code to mesh (main entry point).
+ *
+ * Full pipeline: parser → AST → evaluator → mesh generator.
+ * All processing done in pure Rust - no external dependencies.
+ *
+ * ## Parameters
+ *
+ * - `source`: OpenSCAD source code string
+ *
+ * ## Returns
+ *
+ * JavaScript object with typed arrays:
+ * - `success`: boolean
+ * - `vertices`: Float32Array (x, y, z positions)
+ * - `indices`: Uint32Array (triangle indices)
+ * - `normals`: Float32Array (x, y, z normals)
+ * - `vertexCount`: number
+ * - `triangleCount`: number
+ * - `renderTimeMs`: number
+ * - `error`: string (only if success is false)
+ *
+ * ## Example (JavaScript)
+ *
+ * ```javascript
+ * const result = render('cube(10);');
+ * if (result.success) {
+ *     scene.updateMesh(result.vertices, result.indices, result.normals);
+ * } else {
+ *     console.error(result.error);
+ * }
+ * ```
+ */
+export function render(source: string): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly get_version: () => [number, number];
-  readonly render_from_cst: (a: number, b: number) => any;
+  readonly render: (a: number, b: number) => any;
   readonly wasm_init: () => void;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;

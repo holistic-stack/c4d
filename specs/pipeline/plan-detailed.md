@@ -157,45 +157,69 @@ The pipeline uses the **Visitor Pattern** for tree traversal. Each visitor is in
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Visitor Trait Definitions
+#### SRP Module Structures
 
-**openscad-ast: `CstVisitor`** (traverses CST nodes)
+**openscad-parser: SRP Module Structure** (parses source to CST)
 
-```rust
-// libs/openscad-ast/src/visitor/mod.rs
-pub trait CstVisitor {
-    type Output;
-    
-    fn visit_node(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_source_file(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_module_call(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_module_declaration(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_function_declaration(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_assignment(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_expression(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_for_block(&mut self, node: &CstNode) -> Self::Output;
-    fn visit_if_block(&mut self, node: &CstNode) -> Self::Output;
-    // ... other CST node types
-}
+```
+libs/parser/src/parser/
+├── mod.rs           # Public API (Parser struct, parse)
+├── statements.rs    # Statement dispatch facade (184 lines)
+├── module_call.rs   # Module call and arguments (228 lines)
+├── control_flow.rs  # For, if/else, let, blocks (261 lines)
+├── declarations.rs  # Module/function declarations (266 lines)
+├── expressions.rs   # Expression dispatch facade (74 lines)
+├── operators.rs     # Binary, unary, ternary (285 lines)
+├── primaries.rs     # Literals and identifiers (170 lines)
+├── postfix.rs       # Call, index, member access (187 lines)
+└── collections.rs   # List and range parsing (178 lines)
 ```
 
-**openscad-eval: `AstVisitor`** (traverses AST nodes)
+```rust
+// libs/parser/src/parser/mod.rs
+pub struct Parser<'a> { ... }
+pub fn parse(&mut self) -> Cst;
+```
+
+**openscad-ast: SRP Module Structure** (transforms CST to AST)
+
+```
+libs/openscad-ast/src/visitor/cst_to_ast/
+├── mod.rs           # Public API (transform)
+├── statements.rs    # Statement transformation facade (205 lines)
+├── expressions.rs   # Expression transformation facade (246 lines)
+├── arguments.rs     # Shared argument handling (182 lines)
+├── literals.rs      # Number, string, boolean (199 lines)
+├── operators.rs     # Binary, unary, ternary (238 lines)
+├── control_flow.rs  # For loops, if/else, blocks (248 lines)
+└── declarations.rs  # Module/function declarations (204 lines)
+```
+
+```rust
+// libs/openscad-ast/src/visitor/cst_to_ast/mod.rs
+pub fn transform(cst: &Cst) -> Result<Ast, AstError>;
+```
+
+**openscad-eval: SRP Module Structure** (evaluates AST to geometry)
+
+```
+libs/openscad-eval/src/visitor/
+├── mod.rs           # Public API (evaluate_ast)
+├── context.rs       # EvalContext, statement evaluation (325 lines)
+├── expressions.rs   # Expression evaluation (422 lines)
+├── primitives.rs    # 3D/2D primitive evaluators (335 lines)
+├── boolean.rs       # Boolean operation evaluators (179 lines)
+├── transforms.rs    # Transform evaluators (281 lines)
+└── extrusions.rs    # Extrusion evaluators (196 lines)
+```
 
 ```rust
 // libs/openscad-eval/src/visitor/mod.rs
-pub trait AstVisitor {
-    type Output;
-    
-    fn visit_statement(&mut self, stmt: &Statement) -> Self::Output;
-    fn visit_module_call(&mut self, call: &ModuleCall) -> Self::Output;
-    fn visit_module_def(&mut self, def: &ModuleDefinition) -> Self::Output;
-    fn visit_function_def(&mut self, def: &FunctionDefinition) -> Self::Output;
-    fn visit_assignment(&mut self, assign: &Assignment) -> Self::Output;
-    fn visit_expression(&mut self, expr: &Expression) -> Self::Output;
-    fn visit_for_loop(&mut self, loop_: &ForLoop) -> Self::Output;
-    fn visit_if_else(&mut self, if_else: &IfElse) -> Self::Output;
-    // ... other AST node types
-}
+pub fn evaluate_ast(ast: &Ast) -> Result<EvaluatedAst, EvalError>;
+
+// libs/openscad-eval/src/visitor/context.rs
+pub struct EvalContext { warnings: Vec<String>, scope: Scope }
+pub fn evaluate_statements(ctx: &mut EvalContext, stmts: &[Statement]) -> Result<GeometryNode, EvalError>;
 ```
 
 **openscad-mesh: `GeometryVisitor`** (traverses geometry nodes)
