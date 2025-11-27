@@ -1,170 +1,383 @@
 # Rust OpenSCAD Pipeline – Task Breakdown
 
+_Last updated: 2025-11-27 — **Pipeline + Visitor Pattern!** Strict layer dependencies with visitor pattern for tree traversal._
+
 > This file is the **actionable backlog** for the Rust OpenSCAD pipeline.  
 > It is structured into small, test-driven tasks and subtasks.  
-> See `overview-plan.md` for goals, architecture, and coding standards.
+> See `plan-detailed.md` for goals, architecture, and coding standards.
 
 ---
 
-## Implementation Progress (Updated: 2025-11-27, Manifold Algorithm & Optimizations)
+## Pipeline Overview
 
-### 🚀 MAJOR PERFORMANCE IMPROVEMENT: Manifold-like CSG Algorithm
+### Simple Flow (for `cube(10);`)
 
-**Implemented native Manifold-like CSG algorithm with:**
-- Intersection-based boolean operations (not BSP)
-- Spatial hashing for O(1) triangle queries
-- Ray casting for inside/outside classification
-- Lazy evaluation with CSG tree
-- Tree rewriting optimization
-- Mesh caching for repeated module calls
+```
+playground ─► wasm ─► openscad-mesh ─► openscad-eval ─► openscad-ast ─► openscad-parser
+                                                                              │
+                                                                              ▼
+                                                                         parse("cube(10);")
+                                                                              │
+                                                                              ▼
+                                                                         Cst (tokens + tree)
+                                                                              │
+                                                              ◄───────────────┘
+                                                              ▼
+                                                         Ast (typed statements)
+                                                              │
+                                              ◄───────────────┘
+                                              ▼
+                                         EvaluatedAst (resolved geometry)
+                                              │
+                              ◄───────────────┘
+                              ▼
+                         Mesh (vertices, indices, normals)
+                              │
+              ◄───────────────┘
+              ▼
+         Float32Array / Uint32Array
+              │
+◄─────────────┘
+▼
+Three.js BufferGeometry → WebGL Render
+```
 
-**Performance Results** (same $fs=0.1 test case):
+### Crate Public Interfaces
 
-| Metric | Before (BSP) | After (Manifold) | Improvement |
-|--------|--------------|------------------|-------------|
-| Total Time | 10,509ms | **575ms** | **18x faster** |
-| WASM Mesh Time | 9,048ms | **10ms** | **900x faster** |
-| Vertices | 237,443 | **11,414** | **95% less** |
-| Triangles | 106,169 | **10,280** | **90% less** |
+| Crate | Public Function | Calls | Returns |
+|-------|-----------------|-------|---------|
+| `openscad-parser` | `parse(source: &str)` | (lexer/parser) | `Cst` |
+| `openscad-ast` | `parse(source: &str)` | `openscad_parser::parse()` | `Ast` |
+| `openscad-eval` | `evaluate(source: &str)` | `openscad_ast::parse()` | `EvaluatedAst` |
+| `openscad-mesh` | `render(source: &str)` | `openscad_eval::evaluate()` | `Mesh` |
+| `wasm` | `render(source: &str)` | `openscad_mesh::render()` | `MeshResult` |
 
-**New Modules Created:**
-- `ops/boolean/manifold/` - Intersection-based CSG algorithm
-- `ops/boolean/manifold/spatial_index.rs` - Spatial hashing for fast queries
-- `ops/boolean/halfedge/` - Halfedge mesh data structure
-- `ops/boolean/csg_tree/` - Lazy evaluation and tree rewriting
-- `ops/boolean/cache/` - LRU mesh cache with hit/miss stats
+### Dependency Chain (Strict)
 
-### Previous Analysis (for reference)
+```
+openscad-parser  (no dependencies)
+       ▲
+openscad-ast     (depends on: openscad-parser)
+       ▲
+openscad-eval    (depends on: openscad-ast)
+       ▲
+openscad-mesh    (depends on: openscad-eval)
+       ▲
+wasm             (depends on: openscad-mesh)
+       ▲
+playground       (uses: wasm via JS)
+```
 
-**High-resolution models** (`$fs=0.1`) create extremely detailed meshes:
-- Sphere r=10 with `$fa=5, $fs=0.1` → 72 segments (from $fa, since min(72, 628)=72)
-- Complex CSG with debug helpers: 237k vertices, 106k triangles, ~10.5s (BSP)
-- With Manifold: 11k vertices, 10k triangles, ~575ms
+**Rule: Each layer only calls the layer directly below it. No skipping.**
 
-**Recommendations for users**:
-- Use `$fs = 0.5` to `$fs = 1.0` for 3D printing (not `$fs = 0.1`)
-- Use `$fa = 1` for smooth curves
-- Disable debug helpers for faster iteration
+### Data Structures Summary
 
-### Recent Changes
+| Crate | Output Type | Description |
+|-------|-------------|-------------|
+| `openscad-parser` | `Cst` | Concrete Syntax Tree (tokens + tree structure + spans) |
+| `openscad-ast` | `Ast` | Abstract Syntax Tree (typed statements/expressions) |
+| `openscad-eval` | `EvaluatedAst` | Resolved geometry tree (all values computed) |
+| `openscad-mesh` | `Mesh` | Triangle mesh (vertices, indices, normals) |
+| `wasm` | `MeshResult` | WASM-safe typed arrays (Float32Array, Uint32Array) |
 
-- **Performance Timing**: Added WASM performance breakdown logging (parse/eval/mesh)
-- **BSP Performance Optimization**: Improved `BspNode::new()` from O(N²) to O(N) complexity
-  - Replaced `remove(0)` with `swap_remove` for O(1) splitter extraction
-  - Added pre-allocation for front/back vectors to reduce reallocations
-  - **Result**: ~3.5x speedup on high-resolution boolean tests (17s → 5s)
-- **Built-in Functions**: Added OpenSCAD-compatible built-in functions
-  - `version()` - Returns [year, month, day] vector
-  - `version_num()` - Returns YYYYMMDD number
-  - `str()` - Converts values to string representation
-  - `concat()` - Concatenates vectors
-  - `lookup()` - Linear interpolation lookup in tables
-- **Iterative BSP Operations**: Converted ALL BSP tree operations from recursive to iterative using explicit stacks. This fixes WASM stack overflow with complex boolean operations involving high-resolution meshes.
-  - `BspNode::new()` - Iterative tree construction
-  - `invert()` - Iterative tree inversion
-  - `clip_polygons()` - Iterative polygon clipping
-  - `clip_to()` - Iterative tree clipping
-  - `all_polygons()` - Iterative polygon collection
-  - `polygon_count()` / `depth()` - Iterative counting
-  - **CRITICAL**: Implemented iterative `Drop` for `BspNode` to prevent stack overflow during destruction
-  - Verified with high-resolution stress tests (`$fs=0.1`)
-- **Expression Wrapper Types**: Added CST parser support for `literal` and `expression` supertype wrappers that delegate to child nodes. This fixes parsing of float literals like `$fs = 0.1;`.
-- **Undef Literal**: Added support for `undef` expression type in CST parser.
-- **Ternary Expressions**: Added `ternary_expression` parsing for `cond ? then : else` syntax.
-- **Index Expressions**: Added `index_expression` and `dot_index_expression` for array/object access.
-- **Let Expressions**: Added `let_expression` parsing (delegates to body expression).
-- **Echo/Assert Statements**: Added `echo_statement` and `assert_statement` handling (pass through to following statement).
-- **Echo/Assert Expressions**: Added `assert_expression` and `echo_expression` for inline assert/echo.
-- **Test Coverage**: Added 4 new tests for wrapper types plus 50 boolean tests all pass with iterative BSP.
-- **Children Scoping Cleanup**: Implemented scope popping/restoration for correct children evaluation.
-- **Enhanced Expression Support**: Added dynamic `Value` enum for OpenSCAD types with binary operators for strings, vectors, and comparison.
+### Visitor Pattern (SRP - One File Per Concern)
 
-### Completed ✅
+Each crate uses visitors for tree traversal. **Complex visitors are broken into subdirectories.**
 
-| Phase | Feature | Status | Tests |
-|-------|---------|--------|-------|
-| 1.1 | Workspace & Crate Setup | ✅ Complete | - |
-| 1.2 | Config crate with constants | ✅ Complete | 29 tests |
-| 1.3 | openscad-ast crate | ✅ Complete | 45 tests |
-| 1.4 | openscad-eval crate | ✅ Complete | 57 tests |
-| 1.5 | openscad-mesh crate | ✅ Complete | 136 tests |
-| 1.6 | openscad-wasm crate | ✅ Complete | 3 tests |
-| 1.7 | openscad-lsp crate (skeleton) | ✅ Complete | - |
-| 2.1 | Cube primitive | ✅ Complete | 8 tests |
-| 2.2 | Sphere primitive | ✅ Complete | 6 tests |
-| 2.3 | Cylinder primitive | ✅ Complete | 8 tests |
-| 3.1 | Transforms (translate, rotate, scale) | ✅ Complete | - |
-| 3.2 | Mirror transform | ✅ Complete | - |
-| 3.3 | Color modifier | ✅ Complete | - |
-| 4.1 | $fn/$fa/$fs resolution | ✅ Complete | 9 tests |
-| 6.1 | BSP tree data structure | ✅ Complete | 8 tests |
-| 6.2 | BSP boolean operations | ✅ Complete | 50 tests |
-| 7.1 | linear_extrude | ✅ Complete | 10 tests |
-| 7.2 | rotate_extrude | ✅ Complete | 8 tests |
-| 7.3 | Hull (QuickHull) | ✅ Complete | 9 tests |
-| 7.4 | Minkowski sum | ✅ Complete | 6 tests |
-| 7.5 | Offset (2D polygon) | ✅ Complete | 6 tests |
-| 8.1 | Wire operations into from_ir | ✅ Complete | 11 tests |
+```
+openscad-ast/src/visitor/
+├── mod.rs                → CstVisitor trait + public API
+├── ast_printer.rs        → AstPrinterVisitor: Ast → String (debug)
+└── cst_to_ast/           → CstToAstVisitor (SRP breakdown)
+    ├── mod.rs            → Struct + dispatch logic
+    ├── statements.rs     → ModuleCall, Assignment, ForLoop, IfElse
+    ├── expressions.rs    → Binary, Unary, Literal, List, Range
+    └── declarations.rs   → ModuleDefinition, FunctionDefinition
 
-### Feature Support Matrix
+openscad-eval/src/visitor/
+├── mod.rs                → AstVisitor trait + public API
+├── scope_builder.rs      → ScopeBuilderVisitor: Collect declarations
+├── dependency.rs         → DependencyVisitor: Build dependency graph
+└── evaluator/            → EvaluatorVisitor (SRP breakdown)
+    ├── mod.rs            → Struct + dispatch logic
+    ├── context.rs        → EvaluationContext, scopes, variables
+    ├── expressions.rs    → Expression evaluation (binary, unary, etc.)
+    ├── statements.rs     → Statement evaluation (for, if, let, etc.)
+    ├── builtins.rs       → Built-in functions (sin, cos, len, str, etc.)
+    └── primitives.rs     → Primitive modules (cube, sphere, cylinder)
 
-| Category | Feature | AST | CST Parser | Evaluator | Mesh |
-|----------|---------|-----|------------|-----------|------|
-| **2D Primitives** |||||
-| | `circle(r\|d)` | ✅ | ✅ | ✅ | ✅ |
-| | `square(size, center)` | ✅ | ✅ | ✅ | ✅ |
-| | `polygon(points, paths)` | ✅ | ✅ | ✅ | ✅ |
-| **3D Primitives** |||||
-| | `cube(size, center)` | ✅ | ✅ | ✅ | ✅ |
-| | `sphere(r\|d)` | ✅ | ✅ | ✅ | ✅ |
-| | `cylinder(h, r, r1, r2)` | ✅ | ✅ | ✅ | ✅ |
-| | `polyhedron(points, faces)` | ✅ | ✅ | ✅ | ✅ |
-| **Extrusions** |||||
-| | `linear_extrude(...)` | ✅ | ✅ | ✅ | ✅ |
-| | `rotate_extrude(...)` | ✅ | ✅ | ✅ | ✅ |
-| **Transforms** |||||
-| | `translate([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
-| | `rotate([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
-| | `rotate(a, [x,y,z])` | ✅ | ✅ | ✅ | ✅ |
-| | `scale([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
-| | `mirror([x,y,z])` | ✅ | ✅ | ✅ | ✅ |
-| | `multmatrix(m)` | ✅ | ✅ | ✅ | ✅ |
-| | `resize(newsize, auto)` | ✅ | ✅ | ✅ | ✅ |
-| | `color(...)` | ✅ | ✅ | ✅ | ✅ |
-| | `offset(r\|delta)` | ✅ | ✅ | ✅ | ✅ |
-| | `hull()` | ✅ | ✅ | ✅ | ✅ |
-| | `minkowski()` | ✅ | ✅ | ✅ | ✅ |
-| **Booleans** |||||
-| | `union()` | ✅ | ✅ | ✅ | ✅ |
-| | `difference()` | ✅ | ✅ | ✅ | ✅ |
-| | `intersection()` | ✅ | ✅ | ✅ | ✅ |
-| **Syntax** |||||
-| | `var = value;` | ✅ | ✅ | ✅ | - |
-| | `var = cond ? a : b;` | ✅ | ✅ | ✅ | - |
-| | `module name() {}` | ✅ | ✅ | ✅ | - |
-| | `function name() = ...` | ✅ | ✅ | ✅ | - |
-| | `for (var = range) {}` | ✅ | ✅ | ✅ | - |
-| | `if (cond) {}` | ✅ | ✅ | ✅ | - |
-| **Operators** |||||
-| | Arithmetic (`+ - * / % ^`) | ✅ | ✅ | ✅ | - |
-| | Comparison (`< <= == != >= >`) | ✅ | ✅ | ✅ | - |
-| | Logical (`&& \|\| !`) | ✅ | ✅ | ✅ | - |
-| **Special Variables** |||||
-| | `$fn, $fa, $fs` | ✅ | ✅ | ✅ | - |
-| | `$t` (animation) | ✅ | ✅ | ✅ | - |
-| | `$children` | ✅ | ✅ | ✅ | - |
-| | `$vpr, $vpt, $vpd, $vpf` | ✅ | ⚠️ | ✅ | - |
-| **Modifiers** |||||
-| | `*` (disable) | ✅ | ⚠️ | ✅ | - |
+openscad-mesh/src/visitor/
+├── mod.rs                → GeometryVisitor trait + public API
+└── mesh_builder/         → MeshBuilderVisitor (SRP breakdown)
+    ├── mod.rs            → Struct + dispatch logic
+    ├── primitives.rs     → Cube, Sphere, Cylinder, Polyhedron meshes
+    ├── transforms.rs     → Translate, Rotate, Scale, Mirror, Multmatrix
+    ├── booleans.rs       → Union, Difference, Intersection (CSG)
+    └── extrusions.rs     → LinearExtrude, RotateExtrude
+```
 
-## Current Backlog
+**SRP Rule**: Each file handles ONE type of node or ONE category of operations.
 
-| Priority | Task | Status | Notes |
-|----------|------|--------|-------|
-| **High** | **Verify Playground with Complex Code** | 🚧 In Progress | Test provided OpenSCAD code with modules, functions, booleans |
-| **High** | **Debug `version()` Function** | ⏳ Pending | Implement `version()` built-in function |
-| High | Cleanup Legacy Code | ⏳ Pending | Remove old evaluator code, ensure consistent naming |
-| Medium | Add `let` Block Support | ⏳ Pending | Implement `let(var=val)` in evaluator with proper scoping |
-| Medium | Add Error Highlighting | ⏳ Pending | Show syntax errors inline in editor |
-| Low | Implement `use`/`include` | ⏳ Pending | Support file imports (requires virtual FS) |
-| Low | Performance Optimization | ⏳ Pending | Profile and optimize BSP operations for large meshes |
+---
+
+## 🎯 Priority 1: Pure Rust Parser (libs/openscad-parser)
+
+### Goal
+
+Replace tree-sitter C dependencies with a pure Rust parser, enabling **single WASM output**.
+
+### Design (tree-sitter-inspired)
+
+Based on tree-sitter's `lib/src/` implementation, adapted for pure Rust:
+
+| tree-sitter Component | Pure Rust Equivalent | Purpose |
+|-----------------------|---------------------|---------|
+| `lexer.c` / `lexer.h` | `lexer.rs` | Character-by-character tokenization |
+| `parser.c` / `parser.h` | `parser.rs` | Recursive descent (simpler than GLR) |
+| `subtree.c` / `subtree.h` | `cst.rs` | CST nodes with spans |
+| `stack.c` / `stack.h` | Not needed | OpenSCAD is LL(k), no ambiguity |
+| `grammar.js` | `grammar.rs` | Grammar rules as Rust functions |
+
+### Key Simplifications
+
+1. **Recursive Descent vs GLR** - OpenSCAD is LL(k) compatible, no ambiguity
+2. **No External Scanner** - No heredocs or indentation-sensitive syntax
+3. **No Incremental Parsing** - Full reparse on change (fast enough for OpenSCAD)
+4. **Direct AST** - Can emit AST directly instead of CST → AST conversion
+
+### tree-sitter Source Analysis (`tree-sitter/lib/src/`)
+
+| File | Lines | Purpose | Pure Rust Adaptation |
+|------|-------|---------|---------------------|
+| `lexer.c` | 484 | Character cursor, lookahead, UTF-8 decode | `Lexer` struct with `Peekable<CharIndices>` |
+| `parser.c` | 2263 | GLR parser, shift/reduce actions | Recursive descent (simpler) |
+| `subtree.c` | 1100 | Tree nodes, inline/heap allocation | `enum Node` with `Box<>` children |
+| `stack.c` | 800 | Parse stack for GLR ambiguity | Not needed (LL(k) grammar) |
+| `parser.h` | 287 | Parse actions, lex modes, symbol metadata | `TokenKind` enum, `Span` struct |
+
+**Key tree-sitter concepts to adopt:**
+- `TSLexer.lookahead` → `Lexer.peek()`
+- `ts_lexer_advance()` → `Lexer.advance()`
+- `ts_lexer_mark_end()` → `Lexer.mark_end()`
+- `TSPoint` (row, column) → `Position { line, column, byte }`
+- `Subtree` (with span) → `Node { kind, span, children }`
+
+### Task Breakdown
+
+#### Phase 1: Lexer (`libs/openscad-parser/src/lexer/`)
+
+| Task | File | Description | Status |
+|------|------|-------------|--------|
+| 1.1 | `token.rs` | Token enum (all token types from grammar.js) | ⏳ |
+| 1.2 | `span.rs` | Source span (byte offset, line, column) | ⏳ |
+| 1.3 | `cursor.rs` | Peekable character cursor with position tracking | ⏳ |
+| 1.4 | `lexer.rs` | Main lexer: `fn lex(source: &str) -> Vec<Token>` | ⏳ |
+| 1.5 | `tests.rs` | Lexer unit tests | ⏳ |
+
+**Token Types (from grammar.js):**
+```rust
+pub enum TokenKind {
+    // Literals
+    Integer, Float, String, Boolean, Undef,
+    // Identifiers
+    Identifier, SpecialVariable,  // $fn, $fa, etc.
+    // Keywords
+    Module, Function, If, Else, For, Let, Each,
+    Include, Use, True, False, Undef,
+    // Operators
+    Plus, Minus, Star, Slash, Percent, Caret,
+    Lt, Gt, Le, Ge, Eq, Ne, And, Or, Not,
+    Question, Colon, Semicolon, Comma, Dot,
+    // Delimiters
+    LParen, RParen, LBracket, RBracket, LBrace, RBrace,
+    // Special
+    IncludePath,  // <path/to/file.scad>
+    Modifier,     // *, !, #, %
+    // Meta
+    Comment, Whitespace, Eof, Error,
+}
+```
+
+#### Phase 2: Parser (`libs/openscad-parser/src/parser/`)
+
+| Task | File | Description | Status |
+|------|------|-------------|--------|
+| 2.1 | `ast.rs` | AST node types (Statement, Expression, etc.) | ⏳ |
+| 2.2 | `parser.rs` | Recursive descent parser | ⏳ |
+| 2.3 | `expr.rs` | Expression parsing with precedence climbing | ⏳ |
+| 2.4 | `stmt.rs` | Statement parsing | ⏳ |
+| 2.5 | `error.rs` | Parse errors with spans | ⏳ |
+| 2.6 | `tests.rs` | Parser unit tests | ⏳ |
+
+**Grammar Rules (from grammar.js line 124-464):**
+
+```rust
+// Top-level
+fn parse_source_file(&mut self) -> Vec<Item>;
+fn parse_item(&mut self) -> Item;
+
+// Declarations
+fn parse_module_item(&mut self) -> ModuleItem;
+fn parse_function_item(&mut self) -> FunctionItem;
+fn parse_var_declaration(&mut self) -> VarDeclaration;
+
+// Statements
+fn parse_statement(&mut self) -> Statement;
+fn parse_for_block(&mut self) -> ForBlock;
+fn parse_if_block(&mut self) -> IfBlock;
+fn parse_let_block(&mut self) -> LetBlock;
+fn parse_transform_chain(&mut self) -> TransformChain;
+fn parse_module_call(&mut self) -> ModuleCall;
+
+// Expressions (precedence climbing)
+fn parse_expression(&mut self) -> Expression;
+fn parse_binary_expr(&mut self, min_prec: u8) -> Expression;
+fn parse_unary_expr(&mut self) -> Expression;
+fn parse_primary_expr(&mut self) -> Expression;
+fn parse_literal(&mut self) -> Literal;
+fn parse_list(&mut self) -> List;
+fn parse_range(&mut self) -> Range;
+```
+
+**Operator Precedence (from grammar.js line 358-372):**
+
+| Precedence | Operators | Associativity |
+|------------|-----------|---------------|
+| 1 | `? :` (ternary) | Right |
+| 2 | `\|\|` | Left |
+| 3 | `&&` | Left |
+| 4 | `==` `!=` | Left |
+| 5 | `<` `>` `<=` `>=` | Left |
+| 6 | `+` `-` | Left |
+| 7 | `*` `/` `%` | Left |
+| 8 | `^` | Left |
+| 9 | `!` (unary) | Right |
+| 10 | `()` `[]` `.` (call/index) | Left |
+
+#### Phase 3: Integration
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 3.1 | Public API: `parse(source: &str) -> ParseResult` | ⏳ |
+| 3.2 | Update `libs/wasm` to use pure Rust parser | ⏳ |
+| 3.3 | Remove web-tree-sitter from playground | ⏳ |
+| 3.4 | Single WASM build verification | ⏳ |
+
+---
+
+## ✅ WASM Proof of Concept Complete (2025-11-27)
+
+### Temporary Architecture (to be replaced)
+
+```text
+OpenSCAD Source
+      ↓
+[JavaScript] web-tree-sitter + tree-sitter-openscad.wasm
+      ↓ (CST JSON)
+[Rust WASM] render_from_cst() - Pure Rust, no C deps
+      ↓ (Mesh Data)
+[JavaScript] Three.js WebGL
+```
+
+### Build & Run
+
+```bash
+# Build WASM (from workspace root)
+node scripts/build-wasm.js
+
+# Start playground
+cd apps/playground && npm install && npm run dev
+# Opens http://localhost:5173/
+```
+
+---
+
+## 🔮 Future Phases
+
+| Priority | Task | Description |
+|----------|------|-------------|
+| 2 | **Evaluator** | Implement EvaluationContext, variable scopes |
+| 3 | **Primitives** | Implement cube, sphere, cylinder in openscad-mesh |
+| 4 | **Transforms** | Implement translate, rotate, scale, mirror |
+| 5 | **Booleans** | Implement union, difference, intersection |
+| 6 | **WebGL CSG** | GPU-accelerated preview rendering |
+
+---
+
+## Feature Roadmap
+
+### Phase 1: Core Pipeline (Current)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| tree-sitter parsing (JS) | ✅ | web-tree-sitter |
+| CST to WASM transfer | ✅ | JSON serialization |
+| Cube mesh (hardcoded) | ✅ | Proof of concept |
+| Three.js rendering | ✅ | Z-up, orbit controls |
+
+### Phase 2: AST & Evaluation
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| AST type definitions | ⏳ | Statement, Expression |
+| CST to AST parser | ⏳ | In openscad-ast |
+| Variable scopes | ⏳ | EvaluationContext |
+| $fn/$fa/$fs params | ⏳ | Resolution calculation |
+| Module/function defs | ⏳ | Scope management |
+
+### Phase 3: Primitives & Transforms
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| cube(size, center) | ⏳ | |
+| sphere(r\|d) | ⏳ | $fn resolution |
+| cylinder(h, r1, r2) | ⏳ | $fn resolution |
+| translate/rotate/scale | ⏳ | glam transforms |
+| mirror/multmatrix | ⏳ | |
+| color modifier | ⏳ | |
+
+### Phase 4: Boolean Operations
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| union() | ⏳ | BSP or Manifold |
+| difference() | ⏳ | |
+| intersection() | ⏳ | |
+| hull() | ⏳ | QuickHull |
+| minkowski() | ⏳ | |
+
+### Phase 5: Advanced Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| linear_extrude | ⏳ | twist, scale, slices |
+| rotate_extrude | ⏳ | angle, segments |
+| polyhedron | ⏳ | Custom mesh |
+| 2D primitives | ⏳ | circle, square, polygon |
+
+---
+
+## Design Principles
+
+### Browser Safety
+
+- Pure Rust parser (no C dependencies)
+- NO WASI or file system access
+- Single WASM output file
+- Zero external runtime dependencies
+
+### Algorithm Selection
+
+- tree-sitter-inspired lexer/parser architecture
+- Recursive descent parsing (LL(k) grammar)
+- Manifold-style algorithms for CSG (intersection-based)
+- OpenSCAD-compatible API and output
+
+### Code Standards
+
+- TDD with small, focused tests
+- SRP: Each module has one responsibility
+- DRY: No code duplication
+- KISS: Simple solutions first
+- Files under 500 lines
+- Comprehensive documentation

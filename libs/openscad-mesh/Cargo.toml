@@ -1,0 +1,23 @@
+# =============================================================================
+# OpenSCAD Mesh Crate
+# =============================================================================
+#
+# Mesh generation and CSG operations.
+#
+# ## Purpose
+#
+# - Generate meshes from geometry IR
+# - Boolean operations (union, difference, intersection)
+# - Primitives (cube, sphere, cylinder)
+
+[package]
+name = "openscad-mesh"
+version = "0.1.0"
+edition.workspace = true
+description = "Mesh generation for OpenSCAD"
+
+[dependencies]
+openscad-eval = { path = "../openscad-eval" }
+glam.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"

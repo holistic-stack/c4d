@@ -1,0 +1,23 @@
+# =============================================================================
+# OpenSCAD Eval Crate
+# =============================================================================
+#
+# AST evaluation and geometry IR generation.
+#
+# ## Purpose
+#
+# - Evaluate AST to geometry IR
+# - Variable/function scope management
+# - $fn/$fa/$fs parameter handling
+
+[package]
+name = "openscad-eval"
+version = "0.1.0"
+edition.workspace = true
+description = "AST evaluation for OpenSCAD"
+
+[dependencies]
+openscad-ast = { path = "../openscad-ast" }
+glam.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"

@@ -22,14 +22,42 @@ const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Configuration
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
+
+/** Root directory of the workspace */
 const ROOT_DIR = path.resolve(__dirname, '..');
+
+/** WASM compilation target */
 const WASM_TARGET = 'wasm32-unknown-unknown';
+
+/** WASM crate name */
 const WASM_CRATE = 'openscad-wasm';
+
+/** WASM crate directory */
 const WASM_CRATE_DIR = path.join(ROOT_DIR, 'libs', 'wasm');
+
+/** Output directory for WASM artifacts */
 const OUTPUT_DIR = path.join(WASM_CRATE_DIR, 'pkg');
+
+/** Path to compiled WASM binary */
 const WASM_BIN = path.join(ROOT_DIR, 'target', WASM_TARGET, 'release', 'openscad_wasm.wasm');
-const WASM_BINDGEN_VERSION = '0.2.105';
+
+/** Playground directory */
+const PLAYGROUND_DIR = path.join(ROOT_DIR, 'apps', 'playground');
+
+/** Playground WASM pkg directory */
+const PLAYGROUND_WASM_DIR = path.join(PLAYGROUND_DIR, 'src', 'lib', 'wasm', 'pkg');
+
+/** Playground public directory (for tree-sitter grammar) */
+const PLAYGROUND_PUBLIC_DIR = path.join(PLAYGROUND_DIR, 'public');
+
+/** Tree-sitter OpenSCAD grammar WASM */
+const TREE_SITTER_GRAMMAR = path.join(ROOT_DIR, 'libs', 'openscad-parser', 'tree-sitter-openscad.wasm');
+
+/** Expected wasm-bindgen version (informational only) */
+const WASM_BINDGEN_VERSION = '0.2';
 
 /**
  * Logs a message with a prefix.
@@ -352,17 +380,59 @@ async function main() {
     });
 
     // Copy WASM files to playground
-    const playgroundWasmDir = path.join(ROOT_DIR, 'apps', 'playground', 'src', 'lib', 'wasm', 'pkg');
-    if (fs.existsSync(path.dirname(playgroundWasmDir))) {
-        log(`Copying WASM files to playground...`);
-        fs.mkdirSync(playgroundWasmDir, { recursive: true });
-        fs.readdirSync(OUTPUT_DIR).forEach(file => {
-            const src = path.join(OUTPUT_DIR, file);
-            const dest = path.join(playgroundWasmDir, file);
-            fs.copyFileSync(src, dest);
-        });
-        log(`Copied to ${playgroundWasmDir}`);
+    copyToPlayground();
+
+    // Copy tree-sitter grammar to playground public
+    copyTreeSitterGrammar();
+
+    log('Build complete!');
+}
+
+/**
+ * Copy WASM artifacts to playground.
+ */
+function copyToPlayground() {
+    if (!fs.existsSync(PLAYGROUND_DIR)) {
+        log('Playground not found, skipping WASM copy.');
+        return;
     }
+
+    log('Copying WASM files to playground...');
+    fs.mkdirSync(PLAYGROUND_WASM_DIR, { recursive: true });
+
+    fs.readdirSync(OUTPUT_DIR).forEach(file => {
+        const src = path.join(OUTPUT_DIR, file);
+        const dest = path.join(PLAYGROUND_WASM_DIR, file);
+        fs.copyFileSync(src, dest);
+        log(`  Copied: ${file}`);
+    });
+}
+
+/**
+ * Copy tree-sitter OpenSCAD grammar to playground public directory.
+ *
+ * The grammar WASM is loaded by web-tree-sitter at runtime.
+ */
+function copyTreeSitterGrammar() {
+    if (!fs.existsSync(TREE_SITTER_GRAMMAR)) {
+        log(`Tree-sitter grammar not found at ${TREE_SITTER_GRAMMAR}`);
+        log('Build it with: cd libs/openscad-parser && tree-sitter build --wasm');
+        return;
+    }
+
+    if (!fs.existsSync(PLAYGROUND_DIR)) {
+        log('Playground not found, skipping grammar copy.');
+        return;
+    }
+
+    log('Copying tree-sitter grammar to playground...');
+    fs.mkdirSync(PLAYGROUND_PUBLIC_DIR, { recursive: true });
+
+    const dest = path.join(PLAYGROUND_PUBLIC_DIR, 'tree-sitter-openscad.wasm');
+    fs.copyFileSync(TREE_SITTER_GRAMMAR, dest);
+
+    const stat = fs.statSync(dest);
+    log(`  Copied: tree-sitter-openscad.wasm (${(stat.size / 1024).toFixed(1)} KB)`);
 }
 
 main().catch(err => {

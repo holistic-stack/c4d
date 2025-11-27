@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenSCAD Playground</title>
+  <style>
+    /* =================================================================
+       GLOBAL STYLES
+       ================================================================= */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* =================================================================
+       LAYOUT
+       ================================================================= */
+    .app {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      grid-template-rows: auto 1fr auto;
+      height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      grid-column: 1 / -1;
+      background: #252526;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid #3c3c3c;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .header .version {
+      font-size: 12px;
+      color: #808080;
+    }
+
+    /* Editor Panel */
+    .editor-panel {
+      background: #1e1e1e;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #3c3c3c;
+    }
+
+    .editor-toolbar {
+      padding: 8px;
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+    }
+
+    .editor-textarea {
+      flex: 1;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border: none;
+      padding: 12px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+    }
+
+    /* Viewer Panel */
+    .viewer-panel {
+      background: #2d2d2d;
+      position: relative;
+    }
+
+    #viewer-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Status Bar */
+    .status-bar {
+      grid-column: 1 / -1;
+      background: #007acc;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: #fff;
+    }
+
+    .status-bar.error {
+      background: #f44747;
+    }
+
+    /* =================================================================
+       BUTTONS
+       ================================================================= */
+    .btn {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-primary {
+      background: #0e639c;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #1177bb;
+    }
+
+    .btn-primary:disabled {
+      background: #3c3c3c;
+      cursor: not-allowed;
+    }
+
+    /* =================================================================
+       LOADING OVERLAY
+       ================================================================= */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .loading-overlay.hidden {
+      display: none;
+    }
+
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #3c3c3c;
+      border-top-color: #007acc;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- Main App -->
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>OpenSCAD Playground</h1>
+      <span id="version" class="version">Loading...</span>
+    </header>
+
+    <!-- Editor Panel -->
+    <div class="editor-panel">
+      <div class="editor-toolbar">
+        <button id="render-btn" class="btn btn-primary" disabled>Render</button>
+      </div>
+      <textarea
+        id="editor"
+        class="editor-textarea"
+        spellcheck="false"
+        placeholder="Enter OpenSCAD code..."
+      >// Simple cube example
+cube(20);</textarea>
+    </div>
+
+    <!-- Viewer Panel -->
+    <div class="viewer-panel">
+      <canvas id="viewer-canvas"></canvas>
+    </div>
+
+    <!-- Status Bar -->
+    <div id="status-bar" class="status-bar">
+      Initializing...
+    </div>
+  </div>
+
+  <!-- Entry Point -->
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

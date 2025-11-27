@@ -1,0 +1,21 @@
+# =============================================================================
+# OpenSCAD AST Crate
+# =============================================================================
+#
+# Abstract Syntax Tree types for OpenSCAD parsing.
+#
+# ## Purpose
+#
+# - Define AST node types (Statement, Expression, etc.)
+# - CST to AST conversion
+# - Source span tracking for error reporting
+
+[package]
+name = "openscad-ast"
+version = "0.1.0"
+edition.workspace = true
+description = "AST types for OpenSCAD"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"

@@ -1,0 +1,20 @@
+# =============================================================================
+# OpenSCAD LSP Crate
+# =============================================================================
+#
+# Language Server Protocol implementation.
+#
+# ## Purpose
+#
+# - Code completion
+# - Diagnostics
+# - Hover information
+
+[package]
+name = "openscad-lsp"
+version = "0.1.0"
+edition.workspace = true
+description = "LSP server for OpenSCAD"
+
+[dependencies]
+thiserror = "1.0"
