@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "config",
-    "libs/openscad-parser",
+    "libs/parser",
     "libs/openscad-ast",
     "libs/openscad-eval",
     "libs/openscad-mesh",

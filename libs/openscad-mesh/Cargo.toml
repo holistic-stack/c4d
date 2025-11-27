@@ -7,8 +7,8 @@
 # ## Purpose
 #
 # - Generate meshes from geometry IR
-# - Boolean operations (union, difference, intersection)
-# - Primitives (cube, sphere, cylinder)
+# - CSG boolean operations
+# - Mesh transformations
 
 [package]
 name = "openscad-mesh"
@@ -20,4 +20,4 @@ description = "Mesh generation for OpenSCAD"
 openscad-eval = { path = "../openscad-eval" }
 glam.workspace = true
 serde = { version = "1.0", features = ["derive"] }
-thiserror = "1.0"
+thiserror.workspace = true

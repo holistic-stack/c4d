@@ -7,19 +7,19 @@
 # ## Architecture
 #
 # ```text
-# JavaScript (web-tree-sitter) → CST JSON → Rust WASM → Mesh → Three.js
+# JavaScript → render(source) → Rust WASM (full pipeline) → Mesh → Three.js
 # ```
 #
 # ## Browser Safety
 #
-# - NO tree-sitter dependency (parsing done in JavaScript)
+# - Pure Rust parser (no tree-sitter C dependencies)
 # - NO WASI or file system access
 # - Pure computation only
 #
 # ## Build
 #
 # ```bash
-# node scripts/build-wasm.js
+# wasm-pack build libs/wasm --target web
 # ```
 
 [package]
@@ -32,15 +32,15 @@ description = "Browser-safe WASM interface for OpenSCAD rendering"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# WASM bindings - browser-safe
+# Pipeline crates - pure Rust, browser-safe
+openscad-mesh = { path = "../openscad-mesh" }
+
+# WASM bindings
 wasm-bindgen.workspace = true
 js-sys = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 console_error_panic_hook = { version = "0.1", optional = true }
-
-# Math - browser-safe pure Rust
-glam.workspace = true
 
 [features]
 default = ["console_error_panic_hook"]

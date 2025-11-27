@@ -17,5 +17,6 @@ edition.workspace = true
 description = "AST types for OpenSCAD"
 
 [dependencies]
+openscad-parser = { path = "../parser" }
 serde = { version = "1.0", features = ["derive"] }
-thiserror = "1.0"
+thiserror.workspace = true

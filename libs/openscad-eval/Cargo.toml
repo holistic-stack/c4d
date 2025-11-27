@@ -6,9 +6,9 @@
 #
 # ## Purpose
 #
-# - Evaluate AST to geometry IR
-# - Variable/function scope management
-# - $fn/$fa/$fs parameter handling
+# - Evaluate AST expressions
+# - Resolve variables and functions
+# - Generate geometry intermediate representation
 
 [package]
 name = "openscad-eval"

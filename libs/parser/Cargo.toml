@@ -1,0 +1,19 @@
+[package]
+name = "openscad-parser"
+description = "Pure Rust parser for OpenSCAD - no C dependencies, WASM-safe"
+version = "0.1.0"
+authors = ["Holistic Stack <holisticstack@gmail.com>"]
+license = "MIT"
+edition = "2021"
+readme = "README.md"
+keywords = ["parser", "openscad", "wasm", "pure-rust"]
+categories = ["parser-implementations", "parsing", "wasm"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror.workspace = true
+
+[dev-dependencies]
