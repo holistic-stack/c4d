@@ -1,0 +1,63 @@
+# =============================================================================
+# Manifold-RS: Pure Rust port of Manifold-3D
+# =============================================================================
+#
+# A browser-safe, pure Rust implementation of the Manifold-3D library for
+# robust CSG (Constructive Solid Geometry) operations.
+#
+# ## Features
+# - **Manifold**: 3D solid operations with exact boolean algorithms
+# - **CrossSection**: 2D polygon operations with extrude/revolve
+# - **OpenSCAD Wrapper**: 100% compatible $fn/$fa/$fs segment calculation
+# - **Browser Safe**: No C dependencies, compiles to WASM
+#
+# ## Architecture
+# ```text
+# GeometryNode (from openscad-eval)
+#       ↓
+# OpenSCAD Wrapper ($fn/$fa/$fs → circularSegments)
+#       ↓
+# Manifold/CrossSection operations
+#       ↓
+# Mesh output (vertices, indices, normals)
+# ```
+
+[package]
+name = "manifold-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Rust OpenSCAD Team"]
+description = "Pure Rust port of Manifold-3D for browser-safe CSG operations"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/rust-openscad/rust-openscad"
+keywords = ["csg", "mesh", "3d", "geometry", "openscad"]
+categories = ["graphics", "mathematics", "wasm"]
+
+[dependencies]
+# OpenSCAD evaluation layer (provides GeometryNode)
+openscad-eval = { path = "../openscad-eval" }
+
+# Math library (browser-safe, no_std compatible)
+glam = "0.29"
+
+# Error handling
+thiserror = "2.0"
+
+[dev-dependencies]
+# Approximate float comparison for tests
+approx = "0.5"
+
+[features]
+default = []
+# Optional WebGPU acceleration (requires wgpu)
+gpu = []
+
+[lints.rust]
+# Enforce documentation on public items
+missing_docs = "warn"
+
+[lints.clippy]
+# Code quality checks
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"

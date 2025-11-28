@@ -1,6 +1,6 @@
 # Rust OpenSCAD Pipeline – Overview Plan
 
-_Last updated: 2025-11-27 — **Pipeline Architecture + Visitor Pattern!** Clear layer-by-layer pipeline with strict dependencies. Each crate uses visitors for tree traversal (dedicated files per visitor)._
+_Last updated: 2025-11-28 — **Manifold-RS Migration Complete!** Deleted `libs/openscad-mesh`. Now using `libs/manifold-rs` exclusively - full Rust port of Manifold-3D algorithms. Browser-safe WASM, exact CSG booleans, QuickHull convex hull, Minkowski sum. OpenSCAD $fn/$fa/$fs compatibility wrapper._
 
 > This document is the high-level source of truth for the Rust OpenSCAD pipeline. It describes **goals**, **architecture**, and **standards**. See `tasks.md` in the same folder for the detailed, phase-by-phase backlog.
 
@@ -17,7 +17,7 @@ The system must:
 - **Avoid unnecessary copies** between WASM and JS (zero-copy mesh transfer).
 - **Provide precise source mapping** from errors and geometry back to OpenSCAD source.
 - **100% OpenSCAD API Compatibility**: Public API mirrors OpenSCAD expectations (parameters, output shapes) using best-in-class 3D/2D algorithms for mesh generation and operations.
-- **Best Algorithms for Mesh Operations**: Use proven, browser-safe algorithms (BSP trees for CSG, ear clipping for triangulation, etc.) that deliver correct results with OpenSCAD-compatible output.
+- **Best Algorithms for Mesh Operations**: Use Manifold-3D algorithms (ported to pure Rust) for robust CSG, exact boolean operations, and high-performance mesh generation.
 
 ### 1.0.1 Pipeline Architecture
 
@@ -46,14 +46,15 @@ The pipeline flows through 5 Rust crates. **Each layer only calls the layer dire
 │   │  ├─ Calls: openscad_mesh::render(source)                            │   │
 │   │  └─ Returns: Zero-copy Float32Array to JS                           │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
-│          │ openscad_mesh::render("cube(10);")                               │
+│          │ manifold_rs::render("cube(10);")                               │
 │          ▼                                                                  │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │  libs/openscad-mesh (Mesh Generation)                               │   │
+│   │  libs/manifold-rs (Manifold-3D Rust Port)                           │   │
 │   │  ├─ Public: render(source: &str) -> Mesh                            │   │
 │   │  ├─ Calls: openscad_eval::evaluate(source)                          │   │
 │   │  ├─ Receives: EvaluatedAst (flattened geometry tree)                │   │
-│   │  ├─ Generates: Primitives, Transforms, Booleans, Extrusions         │   │
+│   │  ├─ Core: Manifold (3D), CrossSection (2D), Mesh (output)           │   │
+│   │  ├─ Wrapper: OpenSCAD $fn/$fa/$fs → circularSegments                │   │
 │   │  └─ Returns: Mesh { vertices, indices, normals, colors }            │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │          │ openscad_eval::evaluate("cube(10);")                             │
@@ -93,7 +94,7 @@ The pipeline flows through 5 Rust crates. **Each layer only calls the layer dire
 ### 1.0.2 Crate Dependencies (Strict Layering)
 
 ```
-playground ──uses──> wasm ──uses──> openscad-mesh ──uses──> openscad-eval ──uses──> openscad-ast ──uses──> openscad-parser
+playground ──uses──> wasm ──uses──> manifold-rs ──uses──> openscad-eval ──uses──> openscad-ast ──uses──> openscad-parser
 ```
 
 **Each crate only depends on the crate directly below it. No skipping layers.**
@@ -103,7 +104,7 @@ playground ──uses──> wasm ──uses──> openscad-mesh ──uses─�
 | `openscad-parser` | (none) | `parse(source) -> Cst` | Source text | CST with spans |
 | `openscad-ast` | `openscad-parser` | `parse(source) -> Ast` | Source text | Unevaluated AST |
 | `openscad-eval` | `openscad-ast` | `evaluate(source) -> EvaluatedAst` | Source text | Evaluated/flattened AST |
-| `openscad-mesh` | `openscad-eval` | `render(source) -> Mesh` | Source text | Mesh (verts/indices) |
+| `manifold-rs` | `openscad-eval` | `render(source) -> Mesh` | Source text | Mesh (verts/indices) |
 | `wasm` | `openscad-mesh` | `render(source) -> MeshResult` | Source text | WASM-safe mesh arrays |
 
 ### 1.0.2.1 Visitor Pattern
@@ -142,16 +143,35 @@ The pipeline uses the **Visitor Pattern** for tree traversal. Each visitor is in
 │   │  └─ primitives.rs    - Primitive modules (cube, sphere, cylinder)   │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
-│   openscad-mesh/src/visitor/                                                │
+│   manifold-rs/src/                                                          │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │  mod.rs              - GeometryVisitor trait + public API           │   │
+│   │  lib.rs              - Public API: render(source) -> Mesh           │   │
 │   │                                                                     │   │
-│   │  mesh_builder/       - MeshBuilderVisitor (broken by SRP)           │   │
-│   │  ├─ mod.rs           - MeshBuilderVisitor struct + dispatch         │   │
-│   │  ├─ primitives.rs    - Cube, Sphere, Cylinder, Polyhedron meshes    │   │
-│   │  ├─ transforms.rs    - Translate, Rotate, Scale, Mirror, Multmatrix │   │
-│   │  ├─ booleans.rs      - Union, Difference, Intersection (CSG)        │   │
-│   │  └─ extrusions.rs    - LinearExtrude, RotateExtrude                 │   │
+│   │  manifold/           - 3D Solid Operations (Manifold-3D port)       │   │
+│   │  ├─ mod.rs           - Manifold struct + methods                    │   │
+│   │  ├─ boolean3.rs      - Union, Difference, Intersection (exact)      │   │
+│   │  ├─ constructors.rs  - Cube, Sphere, Cylinder, Tetrahedron          │   │
+│   │  ├─ csg_tree.rs      - CSG tree evaluation and optimization         │   │
+│   │  └─ impl.rs          - Core Manifold implementation                 │   │
+│   │                                                                     │   │
+│   │  cross_section/      - 2D Polygon Operations                        │   │
+│   │  ├─ mod.rs           - CrossSection struct + methods                │   │
+│   │  ├─ offset.rs        - Polygon offset/inset                         │   │
+│   │  └─ boolean.rs       - 2D union/diff/intersection                   │   │
+│   │                                                                     │   │
+│   │  mesh/               - Output Mesh Format                           │   │
+│   │  ├─ mod.rs           - Mesh struct (vertices, indices, normals)     │   │
+│   │  └─ halfedge.rs      - HalfEdge mesh representation                 │   │
+│   │                                                                     │   │
+│   │  openscad/           - OpenSCAD Compatibility Wrapper               │   │
+│   │  ├─ mod.rs           - OpenSCAD API compatibility layer             │   │
+│   │  ├─ segments.rs      - $fn/$fa/$fs → circularSegments converter     │   │
+│   │  └─ from_ir.rs       - GeometryNode → Manifold conversion           │   │
+│   │                                                                     │   │
+│   │  gpu/                - WebGPU Acceleration (Optional)               │   │
+│   │  ├─ mod.rs           - GPU context and mode selection               │   │
+│   │  ├─ sdf.rs           - SDF-based CSG compute shaders                │   │
+│   │  └─ marching_cubes.rs - Mesh extraction from SDF                    │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -222,22 +242,48 @@ pub struct EvalContext { warnings: Vec<String>, scope: Scope }
 pub fn evaluate_statements(ctx: &mut EvalContext, stmts: &[Statement]) -> Result<GeometryNode, EvalError>;
 ```
 
-**openscad-mesh: `GeometryVisitor`** (traverses geometry nodes)
+**manifold-rs: OpenSCAD Compatibility Wrapper** (converts GeometryNode to Manifold)
 
 ```rust
-// libs/openscad-mesh/src/visitor/mod.rs
-pub trait GeometryVisitor {
-    type Output;
-    
-    fn visit_geometry(&mut self, node: &GeometryNode) -> Self::Output;
-    fn visit_cube(&mut self, size: [f64; 3], center: bool) -> Self::Output;
-    fn visit_sphere(&mut self, radius: f64, fn_: u32) -> Self::Output;
-    fn visit_cylinder(&mut self, h: f64, r1: f64, r2: f64, center: bool, fn_: u32) -> Self::Output;
-    fn visit_transform(&mut self, matrix: [[f64; 4]; 4], child: &GeometryNode) -> Self::Output;
-    fn visit_union(&mut self, children: &[GeometryNode]) -> Self::Output;
-    fn visit_difference(&mut self, children: &[GeometryNode]) -> Self::Output;
-    fn visit_intersection(&mut self, children: &[GeometryNode]) -> Self::Output;
-    // ... other geometry types
+// libs/manifold-rs/src/openscad/segments.rs
+/// OpenSCAD segment calculation - 100% compatible with $fn/$fa/$fs
+pub struct SegmentParams {
+    pub fn_: Option<u32>,  // $fn - explicit segment count
+    pub fa: f64,           // $fa - minimum angle per segment (default: 12°)
+    pub fs: f64,           // $fs - minimum segment size (default: 2mm)
+}
+
+impl SegmentParams {
+    /// Calculate circularSegments for Manifold from OpenSCAD params
+    /// Formula: max($fn, ceil(360/$fa), ceil(2*PI*r/$fs))
+    pub fn calculate_segments(&self, radius: f64) -> u32 {
+        if let Some(fn_) = self.fn_ {
+            if fn_ > 0 { return fn_; }
+        }
+        
+        let from_fa = (360.0 / self.fa).ceil() as u32;
+        let circumference = 2.0 * std::f64::consts::PI * radius;
+        let from_fs = (circumference / self.fs).ceil() as u32;
+        
+        from_fa.max(from_fs).max(3)  // Minimum 3 segments
+    }
+}
+
+// libs/manifold-rs/src/openscad/from_ir.rs
+/// Convert GeometryNode (from openscad-eval) to Manifold
+pub fn geometry_to_manifold(node: &GeometryNode, params: &SegmentParams) -> Manifold {
+    match node {
+        GeometryNode::Sphere { radius, fn_, fa, fs } => {
+            let segments = SegmentParams { fn_: *fn_, fa: *fa, fs: *fs }
+                .calculate_segments(*radius);
+            Manifold::sphere(*radius, segments)
+        }
+        GeometryNode::Cylinder { height, radius1, radius2, center, fn_, .. } => {
+            let segments = params.calculate_segments(radius1.max(*radius2));
+            Manifold::cylinder(*height, *radius1, *radius2, segments, *center)
+        }
+        // ... other primitives
+    }
 }
 ```
 
@@ -248,11 +294,11 @@ pub trait GeometryVisitor {
    │
    ▼ wasm.render("cube(10);")
    
-2. wasm: Thin layer, delegates to openscad-mesh
+2. wasm: Thin layer, delegates to manifold-rs
    │
-   ▼ openscad_mesh::render("cube(10);")
+   ▼ manifold_rs::render("cube(10);")
    
-3. openscad-mesh: Needs evaluated AST to generate geometry
+3. manifold-rs: Needs evaluated AST to generate geometry
    │
    ▼ openscad_eval::evaluate("cube(10);")
    
@@ -290,9 +336,11 @@ pub trait GeometryVisitor {
          geometry: GeometryNode::Cube { size: [10.0, 10.0, 10.0], center: false }
        }
    
-9. openscad-mesh: Generates mesh from evaluated geometry
+9. manifold-rs: Generates mesh from evaluated geometry via Manifold
    │
-   └─► Returns: Mesh {
+   ├─ Creates: Manifold::cube([10.0, 10.0, 10.0], false)
+   ├─ Extracts: manifold.get_mesh()
+   └► Returns: Mesh {
          vertices: [0,0,0, 10,0,0, 10,10,0, ...],  // 8 vertices × 3
          indices: [0,1,2, 0,2,3, ...],              // 12 triangles × 3
          normals: [0,0,-1, 0,0,-1, ...],            // per-vertex normals
@@ -398,15 +446,74 @@ pub enum GeometryNode {
 }
 ```
 
-#### openscad-mesh → Mesh (Triangle Mesh)
+#### manifold-rs → Manifold, CrossSection, Mesh
 
 ```rust
+/// 3D Solid - watertight mesh with CSG operations (Manifold-3D port)
+pub struct Manifold {
+    impl_: ManifoldImpl,  // Internal half-edge mesh representation
+}
+
+impl Manifold {
+    // Constructors (OpenSCAD compatible via wrapper)
+    pub fn cube(size: [f64; 3], center: bool) -> Self;
+    pub fn sphere(radius: f64, circular_segments: u32) -> Self;
+    pub fn cylinder(height: f64, r_low: f64, r_high: f64, segments: u32, center: bool) -> Self;
+    pub fn tetrahedron() -> Self;
+    pub fn of_mesh(mesh: &Mesh) -> Self;
+    
+    // Boolean operations (exact, robust)
+    pub fn union(&self, other: &Manifold) -> Self;
+    pub fn subtract(&self, other: &Manifold) -> Self;  // difference
+    pub fn intersect(&self, other: &Manifold) -> Self;
+    pub fn hull(&self) -> Self;
+    
+    // Transforms
+    pub fn translate(&self, offset: [f64; 3]) -> Self;
+    pub fn rotate(&self, degrees: [f64; 3]) -> Self;
+    pub fn scale(&self, factor: [f64; 3]) -> Self;
+    pub fn mirror(&self, normal: [f64; 3]) -> Self;
+    pub fn transform(&self, matrix: [[f64; 4]; 4]) -> Self;
+    
+    // Output
+    pub fn get_mesh(&self) -> Mesh;
+    pub fn num_vert(&self) -> usize;
+    pub fn num_tri(&self) -> usize;
+    pub fn bounding_box(&self) -> BoundingBox;
+}
+
+/// 2D Polygon - for extrusions and 2D operations (Manifold-3D CrossSection port)
+pub struct CrossSection {
+    polygons: Vec<Polygon2D>,
+}
+
+impl CrossSection {
+    // Constructors
+    pub fn circle(radius: f64, circular_segments: u32) -> Self;
+    pub fn square(size: [f64; 2], center: bool) -> Self;
+    pub fn of_polygons(polygons: Vec<Vec<[f64; 2]>>) -> Self;
+    
+    // Boolean operations (2D)
+    pub fn union(&self, other: &CrossSection) -> Self;
+    pub fn subtract(&self, other: &CrossSection) -> Self;
+    pub fn intersect(&self, other: &CrossSection) -> Self;
+    pub fn hull(&self) -> Self;
+    
+    // Operations
+    pub fn offset(&self, delta: f64, join_type: JoinType, segments: u32) -> Self;
+    
+    // Extrusions (returns Manifold)
+    pub fn extrude(&self, height: f64, n_divisions: u32, twist: f64, scale: [f64; 2]) -> Manifold;
+    pub fn revolve(&self, circular_segments: u32, revolve_degrees: f64) -> Manifold;
+}
+
 /// Final triangle mesh ready for rendering
 pub struct Mesh {
-    pub vertices: Vec<f32>,   // [x, y, z, x, y, z, ...] - flat array
-    pub indices: Vec<u32>,    // [i0, i1, i2, ...] - triangle indices
-    pub normals: Vec<f32>,    // [nx, ny, nz, ...] - per-vertex normals
+    pub vertices: Vec<f32>,       // [x, y, z, x, y, z, ...] - flat array
+    pub indices: Vec<u32>,        // [i0, i1, i2, ...] - triangle indices
+    pub normals: Vec<f32>,        // [nx, ny, nz, ...] - per-vertex normals
     pub colors: Option<Vec<f32>>, // [r, g, b, a, ...] - per-vertex colors
+    pub properties: Option<Vec<f32>>, // Custom vertex properties
 }
 ```
 
@@ -596,9 +703,9 @@ fn synchronize(&mut self) {
 #### Module Boundaries (Strict)
 
 ```
-openscad-parser → openscad-ast → openscad-eval → openscad-mesh → wasm
+openscad-parser → openscad-ast → openscad-eval → manifold-rs → wasm
       ↓                ↓               ↓              ↓           ↓
-     CST             AST           IR/Context       Mesh        JS API
+     CST             AST           IR/Context     Manifold      JS API
 ```
 
 - **No skipping layers**: Each crate only depends on the previous one
@@ -611,14 +718,14 @@ The operations in this pipeline are **CPU-bound geometry processing tasks**, not
 
 | Layer | Role | Technology |
 |-------|------|------------|
-| **Rust (via WASM)** | Heavy geometry processing: calculating new mesh vertices, normals, indices for operations like `union()`, `linear_extrude()`, `hull()`, etc. | `openscad-mesh` crate with browser-safe algorithms |
+| **Rust (via WASM)** | Heavy geometry processing: calculating new mesh vertices, normals, indices for operations like `union()`, `linear_extrude()`, `hull()`, etc. | `manifold-rs` crate (Manifold-3D port) with CPU + WebGPU modes |
 | **WebGL** | Efficient rendering: displaying the generated mesh data in the browser's `<canvas>` element | Three.js + `BufferGeometry` |
 
 **Workflow:**
 1. **Parse**: `openscad-parser` produces CST from source via tree-sitter
 2. **Convert**: `openscad-ast` transforms CST to typed AST with spans
 3. **Evaluate**: `openscad-eval` resolves variables, modules, loops → Geometry IR
-4. **Generate**: `openscad-mesh` converts IR to mesh (vertices + indices + normals)
+4. **Generate**: `manifold-rs` converts IR to Manifold → Mesh (vertices + indices + normals)
 5. **Transfer**: `wasm` passes mesh data to JavaScript via zero-copy typed arrays
 6. **Render**: Three.js displays mesh via WebGL
 
@@ -966,7 +1073,7 @@ pub struct CsgProduct {
 Render performs **full geometric boolean evaluation** on the CPU:
 
 1. **Geometry Evaluation** – Recursively evaluate each node, producing concrete `PolySet` meshes.
-2. **Boolean Operations** – Apply union/difference/intersection using BSP trees (or Manifold algorithm) to produce a single watertight mesh.
+2. **Boolean Operations** – Apply union/difference/intersection using Manifold algorithm (exact, robust) to produce a single watertight mesh.
 3. **Mesh Output** – The final mesh is suitable for STL/3MF export and 3D printing.
 
 **Key characteristics:**
@@ -1020,9 +1127,9 @@ Render performs **full geometric boolean evaluation** on the CPU:
 │       ↓                                                                  │
 │  openscad-eval → Geometry IR (fully evaluated)                          │
 │       ↓                                                                  │
-│  openscad-mesh → Primitives to meshes                                   │
+│  manifold-rs → GeometryNode to Manifold primitives                      │
 │       ↓                                                                  │
-│  openscad-mesh → Boolean Operations (BSP/Manifold on CPU)               │
+│  manifold-rs → Boolean Operations (Manifold exact on CPU/GPU)           │
 │       ↓                                                                  │
 │  wasm → Final Mesh (vertices + indices + normals)                       │
 │       ↓                                                                  │
@@ -1063,6 +1170,171 @@ This test validates:
 
 ---
 
+## Phase 8: Manifold Boolean Engine (Performance Upgrade)
+
+Replace BSP-based CSG with Manifold-style algorithms for robust, high-performance boolean operations on the CPU.
+
+### 8.1 Data Structures
+- **HalfEdgeMesh**: Doubly-linked half-edge structure for efficient topology traversal.
+  - `HalfEdge { startVert, endVert, pairedHalfedge, face }`
+  - `Vertex { position, halfedge }`
+  - `Face { halfedge }`
+- **Properties**: Generic property channels (normals, UVs, etc.) stored alongside vertices.
+
+### 8.2 Spatial Indexing
+- **BVH (Bounding Volume Hierarchy)**:
+  - `Collider` struct for accelerating edge-face intersection tests.
+  - Support for localized intersection checks to avoid O(N^2) comparisons.
+
+### 8.3 Robust Geometry
+- **Symbolic Perturbation**: Handle coplanar/coincident features by conceptually expanding/contracting meshes.
+- **Exact Predicates**: Use `robust` crate for orientation and in-circle tests.
+- **Intersection Kernel**:
+  - `Kernel12`: Edge-Face intersection.
+  - `Winding03`: Generalized winding number computation for classification.
+
+### 8.4 Implementation Steps
+1. Define `HalfEdgeMesh` struct and conversion from/to shared-vertex `Mesh`.
+2. Implement `Collider` (BVH) for `HalfEdgeMesh`.
+3. Implement `boolean3` algorithm (Union, Difference, Intersection) using `HalfEdgeMesh`.
+4. Integrate into `manifold_rs::manifold::boolean3`.
+
+---
+
+## Phase 9: WebGPU CSG (GPU - Parallel Acceleration)
+
+Alternative to CPU-based CSG using WebGPU compute shaders for massive parallelism.
+Provides a **toggle option** between CPU Manifold and GPU SDF-based CSG.
+
+### 9.1 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CSG MODE TOGGLE                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────────┐         ┌─────────────────────┐                   │
+│   │   CPU CSG (Phase 8)  │  ←→   │   GPU CSG (Phase 9)  │                   │
+│   │   Manifold Algorithm │        │   SDF + Compute     │                   │
+│   │   - Exact geometry   │        │   - Parallel ops    │                   │
+│   │   - Export-quality   │        │   - Real-time       │                   │
+│   └─────────────────────┘         └─────────────────────┘                   │
+│                                                                             │
+│   Toggle: render_options.csg_mode = CsgMode::Cpu | CsgMode::Gpu             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 SDF-Based CSG Algorithm
+
+Signed Distance Fields (SDFs) naturally parallelize across voxels:
+
+```wgsl
+// WGSL Compute Shader for CSG Operations
+@group(0) @binding(0) var<storage, read> sdf_a: array<f32>;
+@group(0) @binding(1) var<storage, read> sdf_b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> sdf_result: array<f32>;
+@group(0) @binding(3) var<uniform> params: CsgParams;
+
+struct CsgParams {
+    grid_size: vec3<u32>,
+    operation: u32,  // 0=union, 1=intersection, 2=difference
+}
+
+@compute @workgroup_size(8, 8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let idx = id.x + id.y * params.grid_size.x + id.z * params.grid_size.x * params.grid_size.y;
+    
+    let a = sdf_a[idx];
+    let b = sdf_b[idx];
+    
+    switch params.operation {
+        case 0u: { sdf_result[idx] = min(a, b); }      // Union
+        case 1u: { sdf_result[idx] = max(a, b); }      // Intersection
+        case 2u: { sdf_result[idx] = max(a, -b); }     // Difference
+        default: { sdf_result[idx] = a; }
+    }
+}
+```
+
+### 9.3 Implementation Steps
+
+1. **wgpu Setup**
+   - Initialize `wgpu::Device` and `wgpu::Queue` in WASM
+   - Handle browser WebGPU feature detection
+   - Fallback to CPU if WebGPU unavailable
+
+2. **Mesh to SDF Conversion**
+   - Voxelize mesh to 3D grid (compute shader)
+   - Calculate signed distance at each voxel
+
+3. **CSG Compute Pipeline**
+   - Create compute shader modules for each operation
+   - Bind SDF buffers as storage
+   - Dispatch workgroups for parallel processing
+
+4. **SDF to Mesh Extraction**
+   - Marching Cubes algorithm (compute shader)
+   - Generate triangle mesh from SDF zero-crossing
+
+5. **Toggle Integration**
+   - Add `CsgMode` enum to render options
+   - UI toggle in playground
+
+### 9.4 Key Crates
+
+| Crate | Purpose |
+|-------|---------|
+| `wgpu` | Cross-platform WebGPU API |
+| `bytemuck` | Safe buffer casting |
+| `web-sys` | WebGPU browser bindings |
+| `futures` | Async buffer mapping |
+
+### 9.5 Rust/WASM WebGPU Setup
+
+```rust
+use wgpu::util::DeviceExt;
+
+/// CSG computation mode
+#[derive(Clone, Copy, Debug, Default)]
+pub enum CsgMode {
+    #[default]
+    Cpu,  // Phase 8: Manifold algorithm
+    Gpu,  // Phase 9: WebGPU compute shaders
+}
+
+/// WebGPU CSG compute context
+pub struct GpuCsgContext {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    csg_pipeline: wgpu::ComputePipeline,
+}
+
+impl GpuCsgContext {
+    /// Initialize WebGPU for CSG operations
+    pub async fn new() -> Result<Self, CsgError> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU,
+            ..Default::default()
+        });
+        
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .ok_or(CsgError::NoGpuAdapter)?;
+        
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await?;
+        
+        // Create CSG compute pipeline...
+        Ok(Self { device, queue, csg_pipeline })
+    }
+}
+```
+
+---
+
 ## 2. Core Philosophy (Strict Adherence Required)
 
 - **Vertical Slices**  
@@ -1077,7 +1349,7 @@ This test validates:
        ↓
   libs/openscad-eval → Geometry IR
        ↓
-  libs/openscad-mesh → Mesh
+  libs/manifold-rs → Manifold → Mesh
        ↓
   libs/wasm → Float32Array
        ↓
@@ -1091,7 +1363,7 @@ This test validates:
   - `tests.rs` – unit tests (TDD)
   
   Example:  
-  `libs/openscad-mesh/src/primitives/cube/{mod.rs, tests.rs}`.
+  `libs/manifold-rs/src/manifold/constructors/{mod.rs, tests.rs}`.
 
 - **TDD (Test-Driven Development)**  
   - Write tests **before** implementation.  

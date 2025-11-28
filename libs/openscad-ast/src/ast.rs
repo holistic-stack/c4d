@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 /// ## Example
 ///
 /// ```rust
+/// use openscad_ast::Ast;
 /// let ast = Ast { statements: vec![] };
 /// assert!(ast.statements.is_empty());
 /// ```

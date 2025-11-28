@@ -4,7 +4,7 @@ members = [
     "libs/parser",
     "libs/openscad-ast",
     "libs/openscad-eval",
-    "libs/openscad-mesh",
+    "libs/manifold-rs",
     "libs/wasm",
     "libs/openscad-lsp"
 ]

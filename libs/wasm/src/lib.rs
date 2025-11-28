@@ -116,7 +116,7 @@ pub fn render(source: &str) -> JsValue {
     let start = js_sys::Date::now();
 
     // Full pipeline: source → mesh
-    match openscad_mesh::render(source) {
+    match manifold_rs::render(source) {
         Ok(mesh) => {
             let render_time_ms = js_sys::Date::now() - start;
             create_success_result(mesh.vertices, mesh.indices, mesh.normals, render_time_ms)
@@ -188,7 +188,7 @@ mod tests {
     /// Test rendering cube produces mesh data.
     #[test]
     fn test_render_cube() {
-        let mesh = openscad_mesh::render("cube(10);").unwrap();
+        let mesh = manifold_rs::render("cube(10);").unwrap();
         
         // 24 vertices * 3 components = 72 floats
         assert_eq!(mesh.vertices.len(), 72);
@@ -201,7 +201,7 @@ mod tests {
     /// Test rendering sphere produces mesh data.
     #[test]
     fn test_render_sphere() {
-        let mesh = openscad_mesh::render("sphere(5);").unwrap();
+        let mesh = manifold_rs::render("sphere(5);").unwrap();
         
         assert!(!mesh.vertices.is_empty());
         assert!(!mesh.indices.is_empty());

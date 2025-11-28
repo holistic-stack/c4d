@@ -54,6 +54,7 @@ use openscad_parser::Cst;
 /// ## Example
 ///
 /// ```rust
+/// use openscad_ast::visitor::cst_to_ast::transform;
 /// let cst = openscad_parser::parse("cube(10);");
 /// let ast = transform(&cst).unwrap();
 /// assert_eq!(ast.statements.len(), 1);

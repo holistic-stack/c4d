@@ -148,10 +148,10 @@ export class SceneManager {
    * Set up scene helpers (grid, axes).
    */
   private setupHelpers(): void {
-    // Grid on XY plane
-    const grid = new THREE.GridHelper(100, 20, 0x444444, 0x333333);
-    grid.rotation.x = Math.PI / 2; // Rotate for Z-up
-    this.scene.add(grid);
+    // // Grid on XY plane
+    // const grid = new THREE.GridHelper(100, 20, 0x444444, 0x333333);
+    // grid.rotation.x = Math.PI / 2; // Rotate for Z-up
+    // this.scene.add(grid);
 
     // Axes helper (RGB = XYZ)
     const axes = new THREE.AxesHelper(15);
@@ -217,12 +217,16 @@ export class SceneManager {
     this.mesh = new THREE.Mesh(geometry, material);
     this.scene.add(this.mesh);
 
-    // Add edges for better visibility
-    // Very low threshold to show all non-coplanar edges (hull faces, corners)
-    // 0.1 degrees ensures we catch nearly all face boundaries
-    const edgeGeometry = new THREE.EdgesGeometry(geometry, 0.01);
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: EDGE_COLOR });
-    this.edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    // Add wireframe to show ALL triangle edges (OpenSCAD-style visualization)
+    // WireframeGeometry shows every edge, including coplanar triangles
+    // EdgesGeometry only shows edges where face normals differ, missing flat caps
+    const wireGeometry = new THREE.WireframeGeometry(geometry);
+    const wireMaterial = new THREE.LineBasicMaterial({ 
+      color: EDGE_COLOR,
+      transparent: true,
+      opacity: 0.4,
+    });
+    this.edges = new THREE.LineSegments(wireGeometry, wireMaterial);
     this.scene.add(this.edges);
 
     // Center camera on mesh

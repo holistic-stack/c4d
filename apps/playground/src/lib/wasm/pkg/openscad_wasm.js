@@ -136,51 +136,6 @@ function getDataViewMemory0() {
     return cachedDataViewMemory0;
 }
 /**
- * Get the WASM module version.
- *
- * ## Returns
- *
- * Version string (e.g., "0.1.0")
- *
- * ## Example (JavaScript)
- *
- * ```javascript
- * const version = get_version();
- * console.log(`WASM version: ${version}`);
- * ```
- * @returns {string}
- */
-export function get_version() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-        const ret = wasm.get_version();
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-    }
-}
-
-/**
- * Initialize the WASM module.
- *
- * Sets up panic hook for better error messages in browser console.
- * Call this once before using any other functions.
- *
- * ## Example (JavaScript)
- *
- * ```javascript
- * import init from './openscad_wasm.js';
- * await init();
- * ```
- */
-export function wasm_init() {
-    wasm.wasm_init();
-}
-
-/**
  * Render OpenSCAD source code to mesh (main entry point).
  *
  * Full pipeline: parser → AST → evaluator → mesh generator.
@@ -220,6 +175,51 @@ export function render(source) {
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.render(ptr0, len0);
     return ret;
+}
+
+/**
+ * Initialize the WASM module.
+ *
+ * Sets up panic hook for better error messages in browser console.
+ * Call this once before using any other functions.
+ *
+ * ## Example (JavaScript)
+ *
+ * ```javascript
+ * import init from './openscad_wasm.js';
+ * await init();
+ * ```
+ */
+export function wasm_init() {
+    wasm.wasm_init();
+}
+
+/**
+ * Get the WASM module version.
+ *
+ * ## Returns
+ *
+ * Version string (e.g., "0.1.0")
+ *
+ * ## Example (JavaScript)
+ *
+ * ```javascript
+ * const version = get_version();
+ * console.log(`WASM version: ${version}`);
+ * ```
+ * @returns {string}
+ */
+export function get_version() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.get_version();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
 }
 
 const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);

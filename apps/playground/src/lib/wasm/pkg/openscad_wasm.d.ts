@@ -1,35 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * Get the WASM module version.
- *
- * ## Returns
- *
- * Version string (e.g., "0.1.0")
- *
- * ## Example (JavaScript)
- *
- * ```javascript
- * const version = get_version();
- * console.log(`WASM version: ${version}`);
- * ```
- */
-export function get_version(): string;
-/**
- * Initialize the WASM module.
- *
- * Sets up panic hook for better error messages in browser console.
- * Call this once before using any other functions.
- *
- * ## Example (JavaScript)
- *
- * ```javascript
- * import init from './openscad_wasm.js';
- * await init();
- * ```
- */
-export function wasm_init(): void;
-/**
  * Render OpenSCAD source code to mesh (main entry point).
  *
  * Full pipeline: parser → AST → evaluator → mesh generator.
@@ -63,6 +34,35 @@ export function wasm_init(): void;
  * ```
  */
 export function render(source: string): any;
+/**
+ * Initialize the WASM module.
+ *
+ * Sets up panic hook for better error messages in browser console.
+ * Call this once before using any other functions.
+ *
+ * ## Example (JavaScript)
+ *
+ * ```javascript
+ * import init from './openscad_wasm.js';
+ * await init();
+ * ```
+ */
+export function wasm_init(): void;
+/**
+ * Get the WASM module version.
+ *
+ * ## Returns
+ *
+ * Version string (e.g., "0.1.0")
+ *
+ * ## Example (JavaScript)
+ *
+ * ```javascript
+ * const version = get_version();
+ * console.log(`WASM version: ${version}`);
+ * ```
+ */
+export function get_version(): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 

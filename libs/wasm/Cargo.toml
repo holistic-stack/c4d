@@ -33,7 +33,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Pipeline crates - pure Rust, browser-safe
-openscad-mesh = { path = "../openscad-mesh" }
+manifold-rs = { path = "../manifold-rs" }
 
 # WASM bindings
 wasm-bindgen.workspace = true
