@@ -87,6 +87,7 @@ pub fn transform_assignment(node: &CstNode) -> Result<Statement, AstError> {
 /// ```text
 /// module foo() { cube(10); }
 /// module bar(size=10) { cube(size); }
+/// module wrapper() { children(); }
 /// ```
 pub fn transform_module_declaration(node: &CstNode) -> Result<Statement, AstError> {
     let name = node.find_child(NodeKind::Identifier)
@@ -95,6 +96,12 @@ pub fn transform_module_declaration(node: &CstNode) -> Result<Statement, AstErro
             "Module declaration missing name".to_string()
         ))?;
     
+    // Parse parameters (reuse function parameter parsing)
+    let params = node.find_child(NodeKind::Parameters)
+        .map(|p| transform_parameters(p))
+        .transpose()?
+        .unwrap_or_default();
+    
     let body = node.find_child(NodeKind::Block)
         .map(|b| transform_statements(&b.children))
         .transpose()?
@@ -102,7 +109,7 @@ pub fn transform_module_declaration(node: &CstNode) -> Result<Statement, AstErro
     
     Ok(Statement::ModuleDeclaration {
         name,
-        params: Vec::new(), // TODO: Parse parameters
+        params,
         body,
         span: node.span,
     })

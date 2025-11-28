@@ -218,7 +218,9 @@ export class SceneManager {
     this.scene.add(this.mesh);
 
     // Add edges for better visibility
-    const edgeGeometry = new THREE.EdgesGeometry(geometry, 30);
+    // Very low threshold to show all non-coplanar edges (hull faces, corners)
+    // 0.1 degrees ensures we catch nearly all face boundaries
+    const edgeGeometry = new THREE.EdgesGeometry(geometry, 0.01);
     const edgeMaterial = new THREE.LineBasicMaterial({ color: EDGE_COLOR });
     this.edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
     this.scene.add(this.edges);

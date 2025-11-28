@@ -317,7 +317,20 @@ pnpm dev
 | `mirror([x,y,z])` | ✅ | Reflection transform |
 | `color([r,g,b,a])` | ✅ | Color modifier |
 | `function name(params) = expr` | ✅ | User-defined functions |
-| **293 tests passing** | ✅ | Full workspace |
+| `module name(params) { ... }` | ✅ | User-defined modules |
+| `children()` | ✅ | Module children access |
+| `hull()` | ✅ | QuickHull (correct shape, may differ in triangle count) |
+| `minkowski()` | ✅ | Minkowski sum via vertex sums + hull |
+| `polyhedron()` | ✅ | Custom mesh primitive |
+| `circle()` | ✅ | 2D circle primitive |
+| `square()` | ✅ | 2D rectangle primitive |
+| `polygon()` | ✅ | 2D polygon primitive (fan triangulation) |
+| `linear_extrude()` | ✅ | 2D to 3D with height, twist, scale |
+| `rotate_extrude()` | ✅ | 2D to 3D rotation around Z |
+| **SRP Mesh Builder** | ✅ | Split into 6 modules (<400 lines each) |
+| `offset()` | ✅ | 2D polygon expand/shrink |
+| `projection()` | ✅ | 3D to 2D projection |
+| **363 tests passing** | ✅ | Full workspace |
 
 ---
 
@@ -328,9 +341,16 @@ pnpm dev
 | ~~1~~ | ~~**Mirror**~~ | ✅ mirror([x,y,z]) transform - DONE |
 | ~~2~~ | ~~**Color**~~ | ✅ color([r,g,b,a]) modifier - DONE |
 | ~~3~~ | ~~**User-defined Functions**~~ | ✅ function name(params) = expr; - DONE |
-| 1 | **User-defined Modules** | module name(params) { ... } |
-| 2 | **Hull/Minkowski** | Advanced CSG operations |
-| 3 | **2D primitives** | square, circle, polygon |
+| ~~4~~ | ~~**User-defined Modules**~~ | ✅ module name(params) { ... } - DONE |
+| ~~5~~ | ~~**Hull/Minkowski**~~ | ✅ QuickHull + Minkowski sum - DONE |
+| ~~6~~ | ~~**Polyhedron**~~ | ✅ Custom mesh support - DONE |
+| ~~7~~ | ~~**2D primitives**~~ | ✅ circle, square, polygon - DONE |
+| ~~8~~ | ~~**Extrusions**~~ | ✅ linear_extrude, rotate_extrude - DONE |
+| ~~9~~ | ~~**SRP Refactor**~~ | ✅ Mesh builder split to 6 modules - DONE |
+| ~~10~~ | ~~**offset()**~~ | ✅ 2D offset/inset operation - DONE |
+| ~~11~~ | ~~**projection()**~~ | ✅ 3D to 2D projection - DONE |
+| 1 | **import()** | STL/SVG file import |
+| 2 | **text()** | 2D text shapes |
 
 ---
 
@@ -352,8 +372,8 @@ pnpm dev
 | Feature | Status | Notes |
 |---------|--------|-------|
 | cube(size, center) | ✅ | Working |
-| sphere(r\|d) | ✅ | Default $fn=16 |
-| cylinder(h, r1, r2) | ✅ | With cone support |
+| sphere(r\|d, $fn) | ✅ | 100% OpenSCAD compatible tessellation |
+| cylinder(h, r1, r2, $fn) | ✅ | With cone support |
 | translate | ✅ | Working |
 | rotate | ✅ | Working |
 | scale | ✅ | Working |
@@ -367,10 +387,10 @@ pnpm dev
 | union() | ✅ | BSP-based |
 | difference() | ✅ | BSP-based |
 | intersection() | ✅ | BSP-based |
-| hull() | ⏳ | QuickHull |
-| minkowski() | ⏳ | |
+| hull() | ✅ | QuickHull algorithm |
+| minkowski() | ✅ | Vertex sum + hull |
 
-### Phase 4: Variables & Functions ✅ MOSTLY COMPLETE
+### Phase 4: Variables & Functions ✅ COMPLETE
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -380,7 +400,7 @@ pnpm dev
 | For loops | ✅ | for(i=[0:10]) |
 | If/else | ✅ | Conditional geometry |
 | User functions | ✅ | function name(params) = expr; |
-| User modules | ⏳ | Next priority |
+| User modules | ✅ | module name(params) { ... } |
 
 ### Phase 5: Advanced Features
 

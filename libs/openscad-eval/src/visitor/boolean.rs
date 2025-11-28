@@ -1,17 +1,20 @@
 //! # Boolean Operation Evaluators
 //!
-//! Evaluators for CSG boolean operations.
+//! Evaluators for CSG boolean operations and advanced geometry operations.
 //!
 //! ## Operations
 //!
 //! - `union()` - Combine geometries
 //! - `difference()` - Subtract geometries
 //! - `intersection()` - Keep only overlapping region
+//! - `hull()` - Convex hull of all children
+//! - `minkowski()` - Minkowski sum of children
 //!
 //! ## Example
 //!
 //! ```rust,ignore
 //! let node = eval_union(&mut ctx, &children)?;
+//! let hull = eval_hull(&mut ctx, &children)?;
 //! ```
 
 use crate::error::EvalError;
@@ -115,6 +118,73 @@ pub fn eval_intersection(
 }
 
 // =============================================================================
+// ADVANCED GEOMETRY OPERATIONS
+// =============================================================================
+
+/// Evaluate hull() call.
+///
+/// Creates the convex hull (smallest convex shape) containing all children.
+///
+/// ## Parameters
+///
+/// - `ctx`: Evaluation context
+/// - `children`: Child statements to hull
+///
+/// ## Example
+///
+/// ```text
+/// hull() {
+///     sphere(5);
+///     translate([20, 0, 0]) sphere(5);
+/// }
+/// // Creates a pill/capsule shape
+/// ```
+pub fn eval_hull(
+    ctx: &mut EvalContext,
+    children: &[Statement],
+) -> Result<GeometryNode, EvalError> {
+    let child_nodes = flatten_children(ctx, children)?;
+
+    match child_nodes.len() {
+        0 => Ok(GeometryNode::Empty),
+        1 => Ok(child_nodes.into_iter().next().unwrap()),
+        _ => Ok(GeometryNode::Hull { children: child_nodes }),
+    }
+}
+
+/// Evaluate minkowski() call.
+///
+/// Creates the Minkowski sum of all children. Effectively "inflates" the first
+/// child by the shape of the second child.
+///
+/// ## Parameters
+///
+/// - `ctx`: Evaluation context
+/// - `children`: Child statements (typically 2: base shape and inflate shape)
+///
+/// ## Example
+///
+/// ```text
+/// minkowski() {
+///     cube(10);
+///     sphere(2);
+/// }
+/// // Creates a cube with rounded edges
+/// ```
+pub fn eval_minkowski(
+    ctx: &mut EvalContext,
+    children: &[Statement],
+) -> Result<GeometryNode, EvalError> {
+    let child_nodes = flatten_children(ctx, children)?;
+
+    match child_nodes.len() {
+        0 => Ok(GeometryNode::Empty),
+        1 => Ok(child_nodes.into_iter().next().unwrap()),
+        _ => Ok(GeometryNode::Minkowski { children: child_nodes }),
+    }
+}
+
+// =============================================================================
 // HELPERS
 // =============================================================================
 
@@ -193,6 +263,20 @@ mod tests {
     fn test_eval_intersection_empty() {
         let mut ctx = ctx();
         let node = eval_intersection(&mut ctx, &[]).unwrap();
+        assert!(matches!(node, GeometryNode::Empty));
+    }
+
+    #[test]
+    fn test_eval_hull_empty() {
+        let mut ctx = ctx();
+        let node = eval_hull(&mut ctx, &[]).unwrap();
+        assert!(matches!(node, GeometryNode::Empty));
+    }
+
+    #[test]
+    fn test_eval_minkowski_empty() {
+        let mut ctx = ctx();
+        let node = eval_minkowski(&mut ctx, &[]).unwrap();
         assert!(matches!(node, GeometryNode::Empty));
     }
 }

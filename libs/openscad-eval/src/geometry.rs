@@ -211,6 +211,41 @@ pub enum GeometryNode {
         children: Vec<GeometryNode>,
     },
 
+    /// Convex hull of children.
+    ///
+    /// ## OpenSCAD Equivalent
+    ///
+    /// ```text
+    /// hull() {
+    ///   sphere(5);
+    ///   translate([20, 0, 0]) sphere(5);
+    /// }
+    /// ```
+    ///
+    /// Creates the convex hull (smallest convex shape) containing all children.
+    Hull {
+        /// Child geometries to hull.
+        children: Vec<GeometryNode>,
+    },
+
+    /// Minkowski sum of children.
+    ///
+    /// ## OpenSCAD Equivalent
+    ///
+    /// ```text
+    /// minkowski() {
+    ///   cube(10);
+    ///   sphere(2);
+    /// }
+    /// ```
+    ///
+    /// Creates the Minkowski sum - effectively "inflates" the first child
+    /// by the shape of the second child.
+    Minkowski {
+        /// Child geometries (typically 2).
+        children: Vec<GeometryNode>,
+    },
+
     // =========================================================================
     // EXTRUSIONS
     // =========================================================================
@@ -242,6 +277,42 @@ pub enum GeometryNode {
     },
 
     // =========================================================================
+    // 2D OPERATIONS
+    // =========================================================================
+
+    /// 2D Offset (expand/shrink polygon).
+    ///
+    /// ## OpenSCAD Equivalent
+    ///
+    /// ```text
+    /// offset(r = 5) circle(10);
+    /// offset(delta = 2, chamfer = true) square(10);
+    /// ```
+    Offset {
+        /// Offset amount (positive = expand, negative = shrink).
+        delta: f64,
+        /// Whether to use chamfer instead of round joins.
+        chamfer: bool,
+        /// Child 2D geometry to offset.
+        child: Box<GeometryNode>,
+    },
+
+    /// 3D to 2D Projection.
+    ///
+    /// ## OpenSCAD Equivalent
+    ///
+    /// ```text
+    /// projection() sphere(10);
+    /// projection(cut = true) cube(10);
+    /// ```
+    Projection {
+        /// If true, only project the XY cross-section at Z=0.
+        cut: bool,
+        /// Child 3D geometry to project.
+        child: Box<GeometryNode>,
+    },
+
+    // =========================================================================
     // META
     // =========================================================================
 
@@ -263,7 +334,14 @@ impl GeometryNode {
 
     /// Check if this is a 2D node.
     pub fn is_2d(&self) -> bool {
-        matches!(self, Self::Circle { .. } | Self::Square { .. } | Self::Polygon { .. })
+        matches!(
+            self,
+            Self::Circle { .. }
+                | Self::Square { .. }
+                | Self::Polygon { .. }
+                | Self::Offset { .. }
+                | Self::Projection { .. }
+        )
     }
 
     /// Check if this is a 3D node.

@@ -10,6 +10,7 @@
 //! - `boolean` - Boolean operation evaluators
 //! - `transforms` - Transform evaluators
 //! - `extrusions` - Extrusion evaluators
+//! - `ops_2d` - 2D operations (offset, projection)
 //!
 //! ## Example
 //!
@@ -27,6 +28,7 @@ pub mod primitives;
 pub mod boolean;
 pub mod transforms;
 pub mod extrusions;
+pub mod ops_2d;
 
 // Re-export public API
 pub use context::{EvalContext, evaluate_statements};

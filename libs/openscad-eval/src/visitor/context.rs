@@ -26,10 +26,11 @@ use openscad_ast::ast::Parameter;
 use std::collections::HashMap;
 
 use super::expressions::eval_expr;
-use super::primitives::{eval_cube, eval_sphere, eval_cylinder, eval_circle, eval_square};
-use super::boolean::{eval_union, eval_difference, eval_intersection};
+use super::primitives::{eval_cube, eval_sphere, eval_cylinder, eval_polyhedron, eval_circle, eval_square, eval_polygon};
+use super::boolean::{eval_union, eval_difference, eval_intersection, eval_hull, eval_minkowski};
 use super::transforms::{eval_translate, eval_rotate, eval_scale, eval_mirror, eval_color};
 use super::extrusions::{eval_linear_extrude, eval_rotate_extrude};
+use super::ops_2d::{eval_offset, eval_projection};
 
 // =============================================================================
 // USER-DEFINED FUNCTIONS
@@ -54,6 +55,33 @@ pub struct FunctionDef {
 }
 
 // =============================================================================
+// USER-DEFINED MODULES
+// =============================================================================
+
+/// A user-defined module.
+///
+/// Stores the module's parameters and body statements for later evaluation.
+/// Modules differ from functions in that they produce geometry and can
+/// access `children()` passed to them.
+///
+/// ## Example
+///
+/// ```text
+/// module box(size=10) { cube(size); }
+/// // Stored as: ModuleDef { params: [size=10], body: [cube(size)] }
+///
+/// module wrapper() { color("red") children(); }
+/// // Module that wraps children in a color
+/// ```
+#[derive(Debug, Clone)]
+pub struct ModuleDef {
+    /// Module parameters with optional defaults.
+    pub params: Vec<Parameter>,
+    /// Body statements (geometry-producing statements).
+    pub body: Vec<Statement>,
+}
+
+// =============================================================================
 // EVALUATOR CONTEXT
 // =============================================================================
 
@@ -64,6 +92,8 @@ pub struct FunctionDef {
 /// - `warnings`: Collected warnings during evaluation
 /// - `scope`: Variable scope for lexical scoping
 /// - `functions`: User-defined functions
+/// - `modules`: User-defined modules
+/// - `children_stack`: Stack of children for nested module calls
 pub struct EvalContext {
     /// Collected warnings (undefined variables, unknown modules, etc.).
     pub warnings: Vec<String>,
@@ -71,6 +101,11 @@ pub struct EvalContext {
     pub scope: Scope,
     /// User-defined functions.
     pub functions: HashMap<String, FunctionDef>,
+    /// User-defined modules.
+    pub modules: HashMap<String, ModuleDef>,
+    /// Stack of children statements for nested module calls.
+    /// Each level represents the children passed to the current module.
+    pub children_stack: Vec<Vec<Statement>>,
 }
 
 impl EvalContext {
@@ -87,6 +122,8 @@ impl EvalContext {
             warnings: Vec::new(),
             scope: Scope::new(),
             functions: HashMap::new(),
+            modules: HashMap::new(),
+            children_stack: Vec::new(),
         }
     }
 
@@ -110,6 +147,52 @@ impl EvalContext {
     /// Get a user-defined function by name.
     pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
         self.functions.get(name)
+    }
+
+    /// Define a user-defined module.
+    ///
+    /// ## Parameters
+    ///
+    /// - `name`: Module name
+    /// - `params`: Module parameters with optional defaults
+    /// - `body`: Body statements
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// ctx.define_module("box", vec![param("size")], body_stmts);
+    /// ```
+    pub fn define_module(&mut self, name: String, params: Vec<Parameter>, body: Vec<Statement>) {
+        self.modules.insert(name, ModuleDef { params, body });
+    }
+
+    /// Get a user-defined module by name.
+    pub fn get_module(&self, name: &str) -> Option<&ModuleDef> {
+        self.modules.get(name)
+    }
+
+    /// Push children onto the stack for module evaluation.
+    ///
+    /// Called when entering a user-defined module with children.
+    pub fn push_children(&mut self, children: Vec<Statement>) {
+        self.children_stack.push(children);
+    }
+
+    /// Pop children from the stack after module evaluation.
+    pub fn pop_children(&mut self) {
+        self.children_stack.pop();
+    }
+
+    /// Get the current children (for `children()` call inside modules).
+    ///
+    /// Returns empty slice if no children are available.
+    pub fn current_children(&self) -> &[Statement] {
+        self.children_stack.last().map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    /// Get number of current children (for `$children` special variable).
+    pub fn children_count(&self) -> usize {
+        self.current_children().len()
     }
 
     /// Calculate number of fragments for circular shapes.
@@ -220,8 +303,9 @@ pub fn evaluate_statement(
             ctx.define_function(name.clone(), params.clone(), body.clone());
             Ok(None)
         }
-        Statement::ModuleDeclaration { .. } => {
-            // TODO: Implement user-defined modules
+        Statement::ModuleDeclaration { name, params, body, .. } => {
+            // Register the module for later evaluation
+            ctx.define_module(name.clone(), params.clone(), body.clone());
             Ok(None)
         }
     }
@@ -229,34 +313,55 @@ pub fn evaluate_statement(
 
 /// Evaluate a module call.
 ///
-/// Dispatches to the appropriate primitive, boolean, transform, or extrusion evaluator.
+/// ## Evaluation Order
+///
+/// 1. Special modules (children)
+/// 2. User-defined modules
+/// 3. Built-in primitives, transforms, booleans, extrusions
 ///
 /// ## Parameters
 ///
 /// - `ctx`: Evaluation context
-/// - `name`: Module name (e.g., "cube", "translate")
+/// - `name`: Module name (e.g., "cube", "translate", or user-defined)
 /// - `args`: Module arguments
-/// - `children`: Child statements
+/// - `children`: Child statements (for transforms/booleans/user modules)
 fn evaluate_module_call(
     ctx: &mut EvalContext,
     name: &str,
     args: &[Argument],
     children: &[Statement],
 ) -> Result<Option<GeometryNode>, EvalError> {
+    // Special module: children() - evaluates the children passed to current module
+    if name == "children" {
+        return eval_children_call(ctx, args);
+    }
+
+    // Check for user-defined module first
+    if let Some(module) = ctx.get_module(name).cloned() {
+        return eval_user_module(ctx, &module, args, children);
+    }
+
+    // Built-in modules
     match name {
         // 3D Primitives
         "cube" => Ok(Some(eval_cube(ctx, args)?)),
         "sphere" => Ok(Some(eval_sphere(ctx, args)?)),
         "cylinder" => Ok(Some(eval_cylinder(ctx, args)?)),
+        "polyhedron" => Ok(Some(eval_polyhedron(ctx, args)?)),
 
         // 2D Primitives
         "circle" => Ok(Some(eval_circle(ctx, args)?)),
         "square" => Ok(Some(eval_square(ctx, args)?)),
+        "polygon" => Ok(Some(eval_polygon(ctx, args)?)),
 
         // Boolean operations
         "union" => Ok(Some(eval_union(ctx, children)?)),
         "difference" => Ok(Some(eval_difference(ctx, children)?)),
         "intersection" => Ok(Some(eval_intersection(ctx, children)?)),
+
+        // Advanced geometry operations
+        "hull" => Ok(Some(eval_hull(ctx, children)?)),
+        "minkowski" => Ok(Some(eval_minkowski(ctx, children)?)),
 
         // Transforms
         "translate" => Ok(Some(eval_translate(ctx, args, children)?)),
@@ -269,12 +374,144 @@ fn evaluate_module_call(
         "linear_extrude" => Ok(Some(eval_linear_extrude(ctx, args, children)?)),
         "rotate_extrude" => Ok(Some(eval_rotate_extrude(ctx, args, children)?)),
 
+        // 2D Operations
+        "offset" => Ok(Some(eval_offset(ctx, args, children)?)),
+        "projection" => Ok(Some(eval_projection(ctx, args, children)?)),
+
         // Unknown module - warn and skip
         _ => {
             ctx.warn(format!("Unknown module: {}", name));
             Ok(None)
         }
     }
+}
+
+// =============================================================================
+// USER-DEFINED MODULES
+// =============================================================================
+
+/// Evaluate a user-defined module call.
+///
+/// Creates a new scope, binds parameters to arguments, pushes children onto
+/// the stack, evaluates the module body, and pops the children stack.
+///
+/// ## Parameters
+///
+/// - `ctx`: Evaluation context
+/// - `module`: The module definition
+/// - `args`: Arguments passed to the module call
+/// - `children`: Child statements passed to the module
+///
+/// ## Example
+///
+/// ```text
+/// module wrapper() { color("red") children(); }
+/// wrapper() cube(10);  // Cube wrapped in red color
+/// ```
+fn eval_user_module(
+    ctx: &mut EvalContext,
+    module: &ModuleDef,
+    args: &[Argument],
+    children: &[Statement],
+) -> Result<Option<GeometryNode>, EvalError> {
+    // Evaluate all arguments first
+    let mut arg_values: Vec<crate::value::Value> = Vec::new();
+    let mut named_args: std::collections::HashMap<String, crate::value::Value> = std::collections::HashMap::new();
+
+    for arg in args {
+        match arg {
+            Argument::Positional(e) => {
+                arg_values.push(eval_expr(ctx, e)?);
+            }
+            Argument::Named { name, value } => {
+                named_args.insert(name.clone(), eval_expr(ctx, value)?);
+            }
+        }
+    }
+
+    // Create new scope for module evaluation
+    ctx.scope.push();
+
+    // Push children onto the stack for children() access
+    ctx.push_children(children.to_vec());
+
+    // Set $children special variable
+    ctx.scope.define("$children", crate::value::Value::Number(children.len() as f64));
+
+    // Bind parameters to arguments
+    for (i, param) in module.params.iter().enumerate() {
+        // Check for named argument first
+        let value = if let Some(v) = named_args.get(&param.name) {
+            v.clone()
+        } else if i < arg_values.len() {
+            // Use positional argument
+            arg_values[i].clone()
+        } else if let Some(default) = &param.default {
+            // Use default value
+            eval_expr(ctx, default)?
+        } else {
+            // No value provided
+            crate::value::Value::Undef
+        };
+
+        ctx.scope.define(&param.name, value);
+    }
+
+    // Evaluate module body
+    let result = evaluate_statements(ctx, &module.body);
+
+    // Pop children stack
+    ctx.pop_children();
+
+    // Pop module scope
+    ctx.scope.pop();
+
+    result.map(Some)
+}
+
+/// Evaluate children() call inside a module.
+///
+/// Returns the geometry from evaluating the children passed to the current module.
+///
+/// ## Syntax
+///
+/// - `children()` - Evaluate all children
+/// - `children(i)` - Evaluate specific child by index
+/// - `children([start:end])` - Evaluate range of children (future)
+///
+/// ## Example
+///
+/// ```text
+/// module wrapper() { translate([10, 0, 0]) children(); }
+/// wrapper() { cube(5); sphere(3); }  // Both translated
+/// ```
+fn eval_children_call(
+    ctx: &mut EvalContext,
+    args: &[Argument],
+) -> Result<Option<GeometryNode>, EvalError> {
+    let children = ctx.current_children().to_vec();
+
+    if children.is_empty() {
+        return Ok(Some(GeometryNode::Empty));
+    }
+
+    // Check for index argument: children(i)
+    if let Some(arg) = args.first() {
+        let index = match arg {
+            Argument::Positional(e) => eval_expr(ctx, e)?.as_number()? as usize,
+            Argument::Named { value, .. } => eval_expr(ctx, value)?.as_number()? as usize,
+        };
+
+        // Return specific child
+        if index < children.len() {
+            return evaluate_statement(ctx, &children[index]);
+        } else {
+            return Ok(Some(GeometryNode::Empty));
+        }
+    }
+
+    // Evaluate all children
+    evaluate_statements(ctx, &children).map(Some)
 }
 
 // =============================================================================

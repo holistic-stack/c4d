@@ -186,6 +186,105 @@ pub fn eval_cylinder(ctx: &mut EvalContext, args: &[Argument]) -> Result<Geometr
     })
 }
 
+/// Evaluate polyhedron() call.
+///
+/// ## OpenSCAD Signature
+///
+/// ```text
+/// polyhedron(points, faces);
+/// polyhedron(points, faces, convexity);
+/// ```
+///
+/// ## Parameters
+///
+/// - `ctx`: Evaluation context
+/// - `args`: Arguments from the module call
+///
+/// ## Example
+///
+/// ```text
+/// polyhedron(
+///     points = [[0,0,0], [1,0,0], [0,1,0], [0,0,1]],
+///     faces = [[0,1,2], [0,3,1], [0,2,3], [1,3,2]]
+/// );
+/// ```
+pub fn eval_polyhedron(ctx: &mut EvalContext, args: &[Argument]) -> Result<GeometryNode, EvalError> {
+    let mut points: Vec<[f64; 3]> = Vec::new();
+    let mut faces: Vec<Vec<usize>> = Vec::new();
+    let mut convexity = 1;
+
+    for (i, arg) in args.iter().enumerate() {
+        match arg {
+            Argument::Positional(expr) => {
+                let val = eval_expr(ctx, expr)?;
+                match i {
+                    0 => points = parse_points(&val)?,
+                    1 => faces = parse_faces(&val)?,
+                    2 => convexity = val.as_number()? as i32,
+                    _ => {}
+                }
+            }
+            Argument::Named { name, value } => match name.as_str() {
+                "points" => points = parse_points(&eval_expr(ctx, value)?)?,
+                "faces" | "triangles" => faces = parse_faces(&eval_expr(ctx, value)?)?,
+                "convexity" => convexity = eval_expr(ctx, value)?.as_number()? as i32,
+                _ => {}
+            },
+        }
+    }
+
+    // Note: convexity is not stored in GeometryNode::Polyhedron
+    let _ = convexity;
+    
+    Ok(GeometryNode::Polyhedron {
+        points,
+        faces,
+    })
+}
+
+/// Parse points array for polyhedron.
+fn parse_points(val: &Value) -> Result<Vec<[f64; 3]>, EvalError> {
+    match val {
+        Value::List(items) => {
+            let mut points = Vec::with_capacity(items.len());
+            
+            for item in items {
+                let coords = item.as_vec3()?;
+                points.push(coords);
+            }
+            
+            Ok(points)
+        }
+        _ => Err(EvalError::TypeError("Expected list of points".to_string())),
+    }
+}
+
+/// Parse faces array for polyhedron.
+fn parse_faces(val: &Value) -> Result<Vec<Vec<usize>>, EvalError> {
+    match val {
+        Value::List(items) => {
+            let mut faces = Vec::with_capacity(items.len());
+            
+            for item in items {
+                match item {
+                    Value::List(indices) => {
+                        let face: Vec<usize> = indices.iter()
+                            .filter_map(|v| v.as_number().ok().map(|n| n as usize))
+                            .collect();
+                        if face.len() >= 3 {
+                            faces.push(face);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            Ok(faces)
+        }
+        _ => Err(EvalError::TypeError("Expected list of faces".to_string())),
+    }
+}
+
 // =============================================================================
 // 2D PRIMITIVES
 // =============================================================================
@@ -266,6 +365,97 @@ pub fn eval_square(ctx: &mut EvalContext, args: &[Argument]) -> Result<GeometryN
     }
 
     Ok(GeometryNode::Square { size, center })
+}
+
+/// Evaluate polygon() call.
+///
+/// ## OpenSCAD Signature
+///
+/// ```text
+/// polygon(points);
+/// polygon(points, paths);
+/// polygon(points, paths, convexity);
+/// ```
+///
+/// ## Parameters
+///
+/// - `ctx`: Evaluation context
+/// - `args`: Arguments from the module call
+///
+/// ## Example
+///
+/// ```text
+/// polygon(points = [[0,0], [10,0], [10,10], [0,10]]);
+/// ```
+pub fn eval_polygon(ctx: &mut EvalContext, args: &[Argument]) -> Result<GeometryNode, EvalError> {
+    let mut points: Vec<[f64; 2]> = Vec::new();
+    let mut paths: Option<Vec<Vec<usize>>> = None;
+    let mut _convexity = 1;
+
+    for (i, arg) in args.iter().enumerate() {
+        match arg {
+            Argument::Positional(expr) => {
+                let val = eval_expr(ctx, expr)?;
+                match i {
+                    0 => points = parse_points_2d(&val)?,
+                    1 => paths = Some(parse_paths(&val)?),
+                    2 => _convexity = val.as_number()? as i32,
+                    _ => {}
+                }
+            }
+            Argument::Named { name, value } => match name.as_str() {
+                "points" => points = parse_points_2d(&eval_expr(ctx, value)?)?,
+                "paths" => paths = Some(parse_paths(&eval_expr(ctx, value)?)?),
+                "convexity" => _convexity = eval_expr(ctx, value)?.as_number()? as i32,
+                _ => {}
+            },
+        }
+    }
+
+    Ok(GeometryNode::Polygon { points, paths })
+}
+
+/// Parse 2D points array for polygon.
+fn parse_points_2d(val: &Value) -> Result<Vec<[f64; 2]>, EvalError> {
+    match val {
+        Value::List(items) => {
+            let mut points = Vec::with_capacity(items.len());
+            
+            for item in items {
+                let coords = item.as_vec2()?;
+                points.push(coords);
+            }
+            
+            Ok(points)
+        }
+        _ => Err(EvalError::TypeError("Expected list of 2D points".to_string())),
+    }
+}
+
+/// Parse paths array for polygon.
+fn parse_paths(val: &Value) -> Result<Vec<Vec<usize>>, EvalError> {
+    match val {
+        Value::List(items) => {
+            let mut paths = Vec::with_capacity(items.len());
+            
+            for item in items {
+                match item {
+                    Value::List(indices) => {
+                        let path: Vec<usize> = indices.iter()
+                            .filter_map(|v| v.as_number().ok().map(|n| n as usize))
+                            .collect();
+                        if !path.is_empty() {
+                            paths.push(path);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            Ok(paths)
+        }
+        _ => Err(EvalError::TypeError("Expected list of paths".to_string())),
+    }
 }
 
 // =============================================================================

@@ -86,10 +86,8 @@ impl<'a> Parser<'a> {
         let name = self.expect(TokenKind::Identifier)?.clone();
         self.expect(TokenKind::LParen)?;
         
-        // TODO: Parse parameters properly
-        while !self.check(TokenKind::RParen) && !self.is_at_end() {
-            self.advance();
-        }
+        // Parse parameters (reuse function parameter parsing)
+        let params = self.parse_parameters()?;
         
         self.expect(TokenKind::RParen)?;
         let body = self.parse_block()?;
@@ -99,6 +97,7 @@ impl<'a> Parser<'a> {
             self.span_from(start),
             vec![
                 CstNode::with_text(NodeKind::Identifier, name.span, name.text),
+                params,
                 body,
             ],
         ))
@@ -382,5 +381,50 @@ mod tests {
         
         let assign = &cst.root.children[0];
         assert_eq!(assign.kind, NodeKind::Assignment);
+    }
+
+    /// Test module declaration with parameters.
+    #[test]
+    fn test_parse_module_with_params() {
+        let cst = parse("module box(size=10) { cube(size); }");
+        assert!(cst.errors.is_empty(), "Errors: {:?}", cst.errors);
+        
+        let module = &cst.root.children[0];
+        assert_eq!(module.kind, NodeKind::ModuleDeclaration);
+        
+        // Should have Parameters node
+        let params = module.find_child(NodeKind::Parameters).expect("Should have Parameters");
+        assert_eq!(params.children.len(), 1, "Should have 1 parameter");
+        
+        // Parameter should have identifier and default
+        let param = &params.children[0];
+        assert_eq!(param.kind, NodeKind::Parameter);
+        let param_name = param.find_child(NodeKind::Identifier).unwrap();
+        assert_eq!(param_name.text_or_empty(), "size");
+    }
+
+    /// Test module with multiple parameters.
+    #[test]
+    fn test_parse_module_multi_params() {
+        let cst = parse("module box(w, h, d=10) { cube([w, h, d]); }");
+        assert!(cst.errors.is_empty(), "Errors: {:?}", cst.errors);
+        
+        let module = &cst.root.children[0];
+        let params = module.find_child(NodeKind::Parameters).expect("Should have Parameters");
+        assert_eq!(params.children.len(), 3, "Should have 3 parameters");
+    }
+
+    /// Test nested module calls.
+    #[test]
+    fn test_parse_nested_modules() {
+        let cst = parse("module outer() { module inner() { cube(5); } inner(); }");
+        assert!(cst.errors.is_empty(), "Errors: {:?}", cst.errors);
+        
+        let outer = &cst.root.children[0];
+        assert_eq!(outer.kind, NodeKind::ModuleDeclaration);
+        
+        // Body should contain inner module and call
+        let body = outer.find_child(NodeKind::Block).expect("Should have body");
+        assert_eq!(body.children.len(), 2, "Should have inner module and call");
     }
 }
