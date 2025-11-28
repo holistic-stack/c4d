@@ -270,7 +270,11 @@ pub fn merge_coplanar_polygons(polygons: Vec<BspPolygon>) -> Vec<BspPolygon> {
     // Merge within each group
     let mut result = Vec::new();
     
-    for (_key, group) in groups {
+    // Sort groups by key for deterministic processing
+    let mut sorted_groups: Vec<_> = groups.into_iter().collect();
+    sorted_groups.sort_by_key(|(key, _)| *key);
+
+    for (_key, group) in sorted_groups {
         result.extend(merge_polygon_group(group));
     }
     
