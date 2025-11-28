@@ -1,0 +1,78 @@
+warning: unstable feature specified for `-Ctarget-feature`: `atomics`
+  |
+  = note: this feature is not stably supported; its behavior can change in the future
+
+warning: unused variable: `first_char`
+   --> libs\parser\src\lexer\mod.rs:255:48
+    |
+255 |     fn scan_number(&mut self, start: Position, first_char: char) {
+    |                                                ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_first_char`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `source` is never read
+  --> libs\parser\src\parser\mod.rs:63:5
+   |
+61 | pub struct Parser<'a> {
+   |            ------ field in this struct
+62 |     /// Source text (for error messages).
+63 |     source: &'a str,
+   |     ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variant `None` is never constructed
+  --> libs\parser\src\parser\operators.rs:40:5
+   |
+38 | pub(super) enum Precedence {
+   |                 ---------- variant in this enum
+39 |     /// No precedence (sentinel value)
+40 |     None = 0,
+   |     ^^^^
+   |
+   = note: `Precedence` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: `openscad-parser` (lib) generated 4 warnings (run `cargo fix --lib -p openscad-parser` to apply 1 suggestion)
+warning: `openscad-ast` (lib) generated 1 warning (1 duplicate)
+warning: `openscad-eval` (lib) generated 1 warning (1 duplicate)
+    Checking manifold-rs v0.1.0 (C:\Users\luciano\git\rust-openscad\libs\manifold-rs)
+warning: unused import: `std::f32::consts::PI`
+  --> libs\manifold-rs\src\cross_section\extrude.rs:14:5
+   |
+14 | use std::f32::consts::PI;
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `start_face`
+   --> libs\manifold-rs\src\manifold\hull.rs:368:37
+    |
+368 |     fn add_point_to_hull(&mut self, start_face: usize, pt_idx: usize) {
+    |                                     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_start_face`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `params`
+   --> libs\manifold-rs\src\cross_section\ops.rs:159:5
+    |
+159 |     params: &SegmentParams,
+    |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_params`
+
+warning: missing documentation for a type alias
+  --> libs\manifold-rs\src\mesh\halfedge.rs:28:1
+   |
+28 | pub type VertexId = u32;
+   | ^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-W missing-docs`
+
+warning: missing documentation for a type alias
+  --> libs\manifold-rs\src\mesh\halfedge.rs:29:1
+   |
+29 | pub type FaceId = u32;
+   | ^^^^^^^^^^^^^^^
+
+warning: `manifold-rs` (lib) generated 6 warnings (1 duplicate) (run `cargo fix --lib -p manifold-rs` to apply 3 suggestions)
+    Checking openscad-wasm v0.1.0 (C:\Users\luciano\git\rust-openscad\libs\wasm)
+warning: `openscad-wasm` (lib) generated 1 warning (1 duplicate)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.94s

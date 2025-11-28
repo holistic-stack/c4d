@@ -41,7 +41,11 @@ openscad-eval = { path = "../openscad-eval" }
 glam = "0.29"
 
 # Error handling
+# Error handling
 thiserror = "2.0"
+
+# Parallelism
+rayon = "1.10"
 
 [dev-dependencies]
 # Approximate float comparison for tests

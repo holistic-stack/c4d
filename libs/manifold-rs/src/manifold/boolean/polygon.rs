@@ -18,6 +18,7 @@
 use crate::mesh::Mesh;
 use super::geometry::{dot, cross, normalize, compute_triangle_normal, EPSILON};
 use std::collections::HashMap;
+use rayon::prelude::*;
 
 // =============================================================================
 // DATA STRUCTURES
@@ -266,23 +267,19 @@ pub fn merge_coplanar_polygons(polygons: Vec<BspPolygon>) -> Vec<BspPolygon> {
         let key = plane_key(&poly);
         groups.entry(key).or_default().push(poly);
     }
-    
-    // Merge within each group
-    let mut result = Vec::new();
-    
+
     // Sort groups by key for deterministic processing
     let mut sorted_groups: Vec<_> = groups.into_iter().collect();
-    sorted_groups.sort_by_key(|(key, _)| *key);
+    sorted_groups.par_sort_by_key(|(key, _)| *key);
 
-    for (_key, group) in sorted_groups {
-        result.extend(merge_polygon_group(group));
-    }
+    let result: Vec<_> = sorted_groups
+        .into_par_iter()
+        .flat_map(|(_key, group)| merge_polygon_group(group))
+        .collect();
     
     result
 }
 
-/// Compute quantized plane key for grouping coplanar polygons.
-///
 /// Uses integer quantization to handle floating-point imprecision.
 fn plane_key(poly: &BspPolygon) -> [i32; 4] {
     let n = normalize(&poly.normal);

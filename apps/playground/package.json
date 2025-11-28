@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:wasm": "wasm-pack build ../../libs/wasm --target web --out-dir ../../apps/playground/src/lib/wasm/pkg",
+    "build:wasm": "wasm-pack build ../../libs/wasm --target web --out-dir ../../apps/playground/src/lib/wasm/pkg -- -Z build-std=std,panic_abort",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
